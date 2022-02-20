@@ -141,7 +141,7 @@ cython_debug/
 *.pt
 *.o*
 *.svg
-*.ipynb
+# *.ipynb
 *.pdf
 *.xlsx
 Train.job
