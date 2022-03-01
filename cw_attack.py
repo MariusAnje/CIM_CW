@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import modules
 
 """
     Adapted from other github repos, link shown below
@@ -422,6 +423,98 @@ class CW(Attack):
                 prev_cost = cost.item()
 
         return best_adv_images
+
+    def tanh_space(self, x):
+        return 1/2*(torch.tanh(x) + 1)
+
+    def inverse_tanh_space(self, x):
+        # torch.atanh is only for torch >= 1.7.0
+        return self.atanh(x*2-1)
+
+    def atanh(self, x):
+        return 0.5*torch.log((1+x)/(1-x))
+
+    # f-function in the paper
+    def f(self, outputs, labels):
+        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
+
+        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
+        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
+
+        if self._targeted:
+            return torch.clamp((i-j), min=-self.kappa)
+        else:
+            return torch.clamp((j-i), min=-self.kappa)
+
+class WCW(Attack):
+    def __init__(self, model, c=1e-4, kappa=0, steps=1000, lr=0.01, method="l2"):
+        super().__init__("CW", model)
+        self.model = model
+        self.c = c
+        self.kappa = kappa
+        self.steps = steps
+        self.lr = lr
+        self._supported_mode = ['default', 'targeted']
+        self.method = method
+    
+    def get_noise(self):
+        w = []
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                m.noise.requires_grad_()
+                w.append(m.noise)
+        return w
+    
+    def noise_l2(self):
+        size = 0
+        w = 0
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                w += m.noise.pow(2).sum()
+                size += len(m.noise.view(-1))
+        return w / size
+    
+    def noise_max(self):
+        w = None
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                if w is None:
+                    w = m.noise.view(-1)
+                else:
+                    w = torch.cat([w, m.noise.view(-1)])
+        return w.abs().max()
+
+    def forward(self, testloader):
+        r"""
+        Overridden.
+        """
+        method = self.method
+        w = self.get_noise()
+
+        # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
+        optimizer = optim.Adam(w, lr=self.lr)
+
+        for step in range(self.steps):
+            for images, labels in testloader:
+                if self._targeted:
+                    target_labels = self._get_target_label(images, labels)
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                if self._targeted:
+                    f_loss = self.f(outputs, target_labels).sum()
+                else:
+                    f_loss = self.f(outputs, labels).sum()
+
+                if method == "l2":
+                    metric = self.noise_l2()
+                elif method == "max":
+                    metric = self.noise_max()
+
+                cost = self.c*f_loss + metric
+
+                optimizer.zero_grad()
+                cost.backward()
+                optimizer.step()
 
     def tanh_space(self, x):
         return 1/2*(torch.tanh(x) + 1)

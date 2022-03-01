@@ -152,3 +152,7 @@ Train.job
 
 # Work books
 .__afs*
+
+# This thing
+experiment/
+pretrained/
