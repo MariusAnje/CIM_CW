@@ -358,7 +358,6 @@ def sync_search(device, dir='experiment'):
         logger.info(f"Best Reward: {best_samples.reward_list[0]}, " +
                     f"ID: {best_samples.id_list[0]}, " +
                     f"Rollout: {best_samples.rollout_list[0]}")
-        logger.info(f"Best Reward: {best_samples.reward_list}")
     logger.info(
         '=' * 50 +
         "Architecture & quantization sapce exploration finished" +
