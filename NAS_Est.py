@@ -15,6 +15,7 @@ from utility import BestSamples
 import utility
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
+from cw_attack import WCW
 
 
 # def get_args():
@@ -109,6 +110,13 @@ parser.add_argument(
     choices=['Adam', 'SGD'],
     help="Optimizer used, just an indicator, no effecct, please edit the code to change"
     )
+parser.add_argument(
+    '-atk', '--attack',
+    default='l2',
+    choices=['l2', 'max'],
+    help="Distance for CW attack"
+    )
+
 args = parser.parse_args()
 
 
@@ -224,6 +232,29 @@ def nas(device, dir='experiment'):
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
             X.append(XX)
             y.append(reward)
+
+            def my_target(x,y):
+                return (y+1)%10
+            max_list = []
+            avg_list = []
+            acc_list = []
+            for _ in range(1):
+                avg_performance = []
+                model.clear_noise()
+                attacker = WCW(model, c=1, kappa=0, steps=10, lr=0.1, method="l2")
+                # attacker.set_mode_targeted_random(n_classses=10)
+                attacker.set_mode_targeted_by_function(my_target)
+                attacker(val_data)
+                w = attacker.get_noise()
+                max_list.append(attacker.noise_max().item())
+                avg_list.append(np.sqrt(attacker.noise_l2().item()))
+                loss, attack_accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
+                acc_list.append(attack_accuracy)
+            logger.info(np.mean(avg_list))
+            mean_attack = np.mean(acc_list)
+            mean_noise  = reward
+            reward = mean_noise + mean_attack
+
         if args.estimate and e >= args.train_episode:
             reward = clf.predict([XX])[0].item()
             if args.test_gt:
@@ -248,6 +279,8 @@ def nas(device, dir='experiment'):
             [reward] + [ep_time]
             )
         logger.info(f"Reward: {reward}, " +
+                    f"Noise: {mean_noise}, " +
+                    f"Attack: {mean_attack}, " + 
                     f"Elasped time: {ep_time}, " +
                     f"Average time: {total_time/(e+1)}")
         logger.info(f"Best Reward: {best_samples.reward_list[0]}, " +
@@ -327,8 +360,29 @@ def sync_search(device, dir='experiment'):
             _, reward = backend.fit(
                 model, optimizer, train_data, val_data, quan_paras=quan_paras,
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
+            model.clear_noise()
             X.append(XX)
             y.append(reward)
+
+            def my_target(x,y):
+                return (y+1)%10
+            max_list = []
+            avg_list = []
+            acc_list = []
+            for _ in range(1):
+                avg_performance = []
+                model.clear_noise()
+                attacker = WCW(model, c=1e-10, kappa=0, steps=10, lr=1, method="max")
+                # attacker.set_mode_targeted_random(n_classses=10)
+                attacker.set_mode_targeted_by_function(my_target)
+                attacker(val_data)
+                w = attacker.get_noise()
+                max_list.append(attacker.noise_max().item())
+                avg_list.append(np.sqrt(attacker.noise_l2().item()))
+                loss, accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
+                acc_list.append(accuracy)
+            reward = reward + np.mean(acc_list)
+            
         if args.estimate and e >= args.train_episode:
             reward = clf.predict([XX])[0].item()
             if args.test_gt:
