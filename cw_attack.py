@@ -61,7 +61,7 @@ class Attack(object):
         """
         self._attack_mode = 'default'
         self._targeted = False
-        print("Attack mode is changed to 'default.'")
+        # print("Attack mode is changed to 'default.'")
 
     def set_mode_targeted_by_function(self, target_map_function=None):
         r"""
@@ -77,7 +77,7 @@ class Attack(object):
         self._attack_mode = 'targeted'
         self._targeted = True
         self._target_map_function = target_map_function
-        print("Attack mode is changed to 'targeted.'")
+        # print("Attack mode is changed to 'targeted.'")
 
     def set_mode_targeted_least_likely(self, kth_min=1):
         r"""
@@ -92,7 +92,7 @@ class Attack(object):
         self._targeted = True
         self._kth_min = kth_min
         self._target_map_function = self._get_least_likely_label
-        print("Attack mode is changed to 'targeted(least-likely).'")
+        # print("Attack mode is changed to 'targeted(least-likely).'")
 
     def set_mode_targeted_random(self, n_classses=None):
         r"""
@@ -107,7 +107,7 @@ class Attack(object):
         self._targeted = True
         self._n_classses = n_classses
         self._target_map_function = self._get_random_target_label
-        print("Attack mode is changed to 'targeted(random).'")
+        # print("Attack mode is changed to 'targeted(random).'")
 
     def set_return_type(self, type):
         r"""
@@ -218,7 +218,7 @@ class Attack(object):
                 torch.save((image_list, label_list, pre_list), save_path)
             else:
                 torch.save((image_list, label_list), save_path)
-            print('- Save complete!')
+            # print('- Save complete!')
 
         if given_training:
             self.model.train()

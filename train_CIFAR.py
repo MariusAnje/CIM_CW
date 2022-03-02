@@ -82,8 +82,8 @@ def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
     for i in range(epochs):
         model.train()
         running_loss = 0.
-        for images, labels in tqdm(trainloader):
-        # for images, labels in trainloader:
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
             model.clear_noise()
             model.set_noise(dev_var, write_var)
             optimizer.zero_grad()
@@ -199,12 +199,13 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
-    args.train_epoch = 20
+    args.train_epoch = 30
     args.dev_var = 0.3
     # args.train_var = 0.3
-    args.train_var = 0.03
+    args.train_var = 0.0
     args.verbose = True
-
+    
+    """
     model.to_first_only()
     NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
     if args.train_var > 0:
@@ -219,3 +220,34 @@ if __name__ == "__main__":
     model.clear_mask()
     performance = NEachEval(args.dev_var, 0.0)
     print(f"No mask noise acc: {performance:.4f}")
+    """
+    args.train_var = 0.0
+    header = 1
+    model.from_first_back_second()
+    state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt", map_location="cpu")
+    model.load_state_dict(state_dict)
+    model.clear_mask()
+    model.clear_noise()
+    print(f"No mask no noise: {CEval():.4f}")
+    # print(f"No mask w/ noise: {NEachEval(args.dev_var, args.write_var):.4f}")
+    model.to_first_only()
+    def my_target(x,y):
+        return (y+1)%10
+    max_list = []
+    avg_list = []
+    acc_list = []
+    for _ in range(1):
+        avg_performance = []
+        model.clear_noise()
+        attacker = WCW(model, c=1e-8, kappa=0, steps=10, lr=0.01, method="l2")
+        # attacker.set_mode_targeted_random(n_classses=10)
+        attacker.set_mode_targeted_by_function(my_target)
+        attacker(testloader)
+        w = attacker.get_noise()
+        max_list.append(attacker.noise_max().item())
+        avg_list.append(np.sqrt(attacker.noise_l2().item()))
+        accuracy = CEval().item()
+        acc_list.append(accuracy)
+    print(f"Max diff: {np.mean(max_list):.3f}")
+    print(f"L2  diff: {np.mean(avg_list):.3f}")
+    print(f"Avg  acc: {np.mean(acc_list):.4f}")

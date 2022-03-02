@@ -213,6 +213,8 @@ def nas(device, dir='experiment'):
         child_id += 1
         start = time.time()
         rollout, paras = agent.rollout()
+        rollout = [1, 1, 0, 0, 1, 0,  1, 1, 0, 0, 1, 1,  1, 1, 0, 0, 2, 0,  1, 1, 0, 0, 2, 1,  1, 1, 0, 0, 3, 0,  1, 1, 0, 0, 3, 1]
+        paras = agent.agent._format_rollout(rollout)
         logger.info("Sample Architecture ID: {}, Sampled actions: {}".format(
                     child_id, rollout))
         arch_paras, quan_paras = utility.split_paras(paras)
@@ -230,6 +232,7 @@ def nas(device, dir='experiment'):
             _, reward = backend.fit(
                 model, optimizer, train_data, val_data, quan_paras=quan_paras,
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
+            # torch.save(model.state_dict(), "tmp_trained_0.3.pt")
             X.append(XX)
             y.append(reward)
 
@@ -241,7 +244,7 @@ def nas(device, dir='experiment'):
             for _ in range(1):
                 avg_performance = []
                 model.clear_noise()
-                attacker = WCW(model, c=1, kappa=0, steps=10, lr=0.1, method="l2")
+                attacker = WCW(model, c=1e-5, kappa=0, steps=10, lr=0.01, method="l2")
                 # attacker.set_mode_targeted_random(n_classses=10)
                 attacker.set_mode_targeted_by_function(my_target)
                 attacker(val_data)
@@ -250,7 +253,7 @@ def nas(device, dir='experiment'):
                 avg_list.append(np.sqrt(attacker.noise_l2().item()))
                 loss, attack_accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
                 acc_list.append(attack_accuracy)
-            logger.info(np.mean(avg_list))
+            logger.info(f"L2 norm: {np.mean(avg_list):.4f}")
             mean_attack = np.mean(acc_list)
             mean_noise  = reward
             reward = mean_noise + mean_attack

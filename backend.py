@@ -55,7 +55,8 @@ def epoch_fit(model, data, optimizer=None, quan_paras=None, verbosity=0, dev_var
         model.eval()
     running_loss, running_correction, running_total = 0, 0, 0
     for input_batch, label_batch in data:
-        model.set_noise(dev_var, 0.0)
+        if dev_var > 0:
+            model.set_noise(dev_var, 0.0)
         loss, correction = batch_fit(
             model, input_batch, label_batch, optimizer, quan_paras)
         running_loss += loss
