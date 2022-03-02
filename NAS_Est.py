@@ -116,6 +116,12 @@ parser.add_argument(
     choices=['l2', 'max'],
     help="Distance for CW attack"
     )
+parser.add_argument(
+    '-c', '--cw_c',
+    type=float,
+    default=1e-5,
+    help="hyper parameter for CW attack"
+    )
 
 args = parser.parse_args()
 
@@ -166,6 +172,26 @@ def generate_hot(r, length):
         hot += this
     return hot
 
+def attack_wcw(logger, model, val_data, quan_paras):
+    def my_target(x,y):
+        return (y+1)%10
+    max_list = []
+    avg_list = []
+    acc_list = []
+    for _ in range(9):
+        model.clear_noise()
+        attacker = WCW(model, c=args.cw_c, kappa=0, steps=10, lr=0.01, method=args.attack)
+        # attacker.set_mode_targeted_random(n_classses=10)
+        attacker.set_mode_targeted_by_function(my_target)
+        attacker(val_data)
+        max_list.append(attacker.noise_max().item())
+        avg_list.append(np.sqrt(attacker.noise_l2().item()))
+        loss, attack_accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
+        acc_list.append(attack_accuracy)
+    logger.info(f"L2 norm: {np.mean(avg_list):.4f}")
+    mean_attack = np.mean(acc_list)
+    return mean_attack
+
 def nas(device, dir='experiment'):
     if os.path.exists(dir) is False:
         os.makedirs(dir)
@@ -213,8 +239,8 @@ def nas(device, dir='experiment'):
         child_id += 1
         start = time.time()
         rollout, paras = agent.rollout()
-        rollout = [1, 1, 0, 0, 1, 0,  1, 1, 0, 0, 1, 1,  1, 1, 0, 0, 2, 0,  1, 1, 0, 0, 2, 1,  1, 1, 0, 0, 3, 0,  1, 1, 0, 0, 3, 1]
-        paras = agent.agent._format_rollout(rollout)
+        # rollout = [1, 1, 0, 0, 1, 0,  1, 1, 0, 0, 1, 1,  1, 1, 0, 0, 2, 0,  1, 1, 0, 0, 2, 1,  1, 1, 0, 0, 3, 0,  1, 1, 0, 0, 3, 1]
+        # paras = agent.agent._format_rollout(rollout)
         logger.info("Sample Architecture ID: {}, Sampled actions: {}".format(
                     child_id, rollout))
         arch_paras, quan_paras = utility.split_paras(paras)
@@ -232,29 +258,10 @@ def nas(device, dir='experiment'):
             _, reward = backend.fit(
                 model, optimizer, train_data, val_data, quan_paras=quan_paras,
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
-            # torch.save(model.state_dict(), "tmp_trained_0.3.pt")
             X.append(XX)
             y.append(reward)
 
-            def my_target(x,y):
-                return (y+1)%10
-            max_list = []
-            avg_list = []
-            acc_list = []
-            for _ in range(1):
-                avg_performance = []
-                model.clear_noise()
-                attacker = WCW(model, c=1e-5, kappa=0, steps=10, lr=0.01, method="l2")
-                # attacker.set_mode_targeted_random(n_classses=10)
-                attacker.set_mode_targeted_by_function(my_target)
-                attacker(val_data)
-                w = attacker.get_noise()
-                max_list.append(attacker.noise_max().item())
-                avg_list.append(np.sqrt(attacker.noise_l2().item()))
-                loss, attack_accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
-                acc_list.append(attack_accuracy)
-            logger.info(f"L2 norm: {np.mean(avg_list):.4f}")
-            mean_attack = np.mean(acc_list)
+            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
             mean_noise  = reward
             reward = mean_noise + mean_attack
 
@@ -281,9 +288,9 @@ def nas(device, dir='experiment'):
             [str(paras[i]) for i in range(args.layers)] +
             [reward] + [ep_time]
             )
-        logger.info(f"Reward: {reward}, " +
-                    f"Noise: {mean_noise}, " +
-                    f"Attack: {mean_attack}, " + 
+        logger.info(f"Reward: {reward:.4f}, " +
+                    f"Noise: {mean_noise:.4f}, " +
+                    f"Attack: {mean_attack:.4f}, " + 
                     f"Elasped time: {ep_time}, " +
                     f"Average time: {total_time/(e+1)}")
         logger.info(f"Best Reward: {best_samples.reward_list[0]}, " +
@@ -367,24 +374,9 @@ def sync_search(device, dir='experiment'):
             X.append(XX)
             y.append(reward)
 
-            def my_target(x,y):
-                return (y+1)%10
-            max_list = []
-            avg_list = []
-            acc_list = []
-            for _ in range(1):
-                avg_performance = []
-                model.clear_noise()
-                attacker = WCW(model, c=1e-10, kappa=0, steps=10, lr=1, method="max")
-                # attacker.set_mode_targeted_random(n_classses=10)
-                attacker.set_mode_targeted_by_function(my_target)
-                attacker(val_data)
-                w = attacker.get_noise()
-                max_list.append(attacker.noise_max().item())
-                avg_list.append(np.sqrt(attacker.noise_l2().item()))
-                loss, accuracy = backend.epoch_fit(model, val_data, optimizer=None, quan_paras=quan_paras, verbosity=0, dev_var=0.0)
-                acc_list.append(accuracy)
-            reward = reward + np.mean(acc_list)
+            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
+            mean_noise  = reward
+            reward = mean_noise + mean_attack
             
         if args.estimate and e >= args.train_episode:
             reward = clf.predict([XX])[0].item()
@@ -409,7 +401,9 @@ def sync_search(device, dir='experiment'):
             [str(paras[i]) for i in range(args.layers)] +
             [reward] + [ep_time]
             )
-        logger.info(f"Reward: {reward}, " +
+        logger.info(f"Reward: {reward:.4f}, " +
+                    f"Noise: {mean_noise:.4f}, " +
+                    f"Attack: {mean_attack:.4f}, " + 
                     f"Elasped time: {ep_time}, " +
                     f"Average time: {total_time/(e+1)}")
         logger.info(f"Best Reward: {best_samples.reward_list[0]}, " +
