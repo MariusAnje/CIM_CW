@@ -83,7 +83,7 @@ parser.add_argument(
     '-v', '--verbosity',
     type=int,
     choices=range(3),
-    default=0,
+    default=1,
     help="verbosity level: 0 (default), 1 and 2 with 2 being the most verbose"
     )
 parser.add_argument(

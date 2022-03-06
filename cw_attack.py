@@ -495,8 +495,8 @@ class WCW(Attack):
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
         optimizer = optim.Adam(w, lr=self.lr)
 
-        for step in tqdm(range(self.steps)):
-        # for step in range(self.steps):
+        # for step in tqdm(range(self.steps)):
+        for step in range(self.steps):
             # for images, labels in tqdm(testloader, leave=False):
             for images, labels in testloader:
                 if self._targeted:
