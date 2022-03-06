@@ -98,5 +98,7 @@ class QNConv2d(NModule):
                 m.bias.zero_()
 
     def forward(self, x):
-        x = self.function(x, quant(self.N, self.op.weight) + self.noise, quant(self.N, self.op.bias), self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        x = self.function(x, quant(self.N, self.op.weight) + self.noise, None, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        if self.op.bias is not None:
+            x += quant(self.N, self.op.bias).reshape(1,-1,1,1).expand_as(x)
         return quant(self.N, x)

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import modules
+from tqdm import tqdm
 
 """
     Adapted from other github repos, link shown below
@@ -494,7 +495,9 @@ class WCW(Attack):
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
         optimizer = optim.Adam(w, lr=self.lr)
 
-        for step in range(self.steps):
+        for step in tqdm(range(self.steps)):
+        # for step in range(self.steps):
+            # for images, labels in tqdm(testloader, leave=False):
             for images, labels in testloader:
                 if self._targeted:
                     target_labels = self._get_target_label(images, labels)
@@ -511,7 +514,6 @@ class WCW(Attack):
                     metric = self.noise_max()
 
                 cost = self.c*f_loss + metric
-
                 optimizer.zero_grad()
                 cost.backward()
                 optimizer.step()

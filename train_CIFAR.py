@@ -151,6 +151,12 @@ if __name__ == "__main__":
             help='division points for second')
     parser.add_argument('--layerwise', action='store',type=str2bool, default=False,
             help='if do it layer by layer')
+    parser.add_argument('--attack_c', action='store',type=float, default=1e-4,
+            help='c value for attack')
+    parser.add_argument('--attack_runs', action='store',type=int, default=10,
+            help='# of runs for attack')
+    parser.add_argument('--attack_lr', action='store',type=float, default=1e-4,
+            help='learning rate for attack')
     args = parser.parse_args()
 
     print(args)
@@ -162,33 +168,81 @@ if __name__ == "__main__":
 
     BS = 128
 
-    trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
-                                            download=False, transform=transforms.ToTensor())
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
-                                            shuffle=True, num_workers=2)
-    testset = torchvision.datasets.MNIST(root='~/Private/data', train=False,
-                                        download=False, transform=transforms.ToTensor())
-    testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
-                                                shuffle=False, num_workers=2)
-                                                
-    normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
-    transform = transforms.Compose(
-    [transforms.ToTensor(),
-    #  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    if args.model == "CIFAR" or args.model == "Res18" or args.model == "QCIFAR" or args.model == "QRes18" or args.model == "QDENSE":
+        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transform = transforms.Compose(
+        [transforms.ToTensor(),
+        #  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
             normalize])
-    train_transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(32, 4),
-            transforms.ToTensor(),
-            normalize,
-            ])
-    trainset = torchvision.datasets.CIFAR10(root='~/Private/data', train=True, download=False, transform=train_transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=4)
-    secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=4)
-    testset = torchvision.datasets.CIFAR10(root='~/Private/data', train=False, download=False, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=4)
-    model = CIFAR()
-    # model = QSLeNet()
+        train_transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(32, 4),
+                transforms.ToTensor(),
+                normalize,
+                ])
+        trainset = torchvision.datasets.CIFAR10(root='~/Private/data', train=True, download=False, transform=train_transform)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=4)
+        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=4)
+        testset = torchvision.datasets.CIFAR10(root='~/Private/data', train=False, download=False, transform=transform)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=4)
+    elif args.model == "TIN" or args.model == "QTIN" or args.model == "QVGG":
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        transform = transforms.Compose(
+                [transforms.ToTensor(),
+                 normalize,
+                ])
+        train_transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(64, 4),
+                transforms.ToTensor(),
+                normalize,
+                ])
+        trainset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/train', transform=train_transform)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=8)
+        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=8)
+        testset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/val',  transform=transform)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=8)
+    else:
+        trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
+                                                download=False, transform=transforms.ToTensor())
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
+                                                shuffle=True, num_workers=2)
+        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div,
+                                                shuffle=False, num_workers=2)
+
+        testset = torchvision.datasets.MNIST(root='~/Private/data', train=False,
+                                            download=False, transform=transforms.ToTensor())
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
+                                                    shuffle=False, num_workers=2)
+
+
+    if args.model == "MLP3":
+        model = SMLP3()
+    elif args.model == "MLP4":
+        model = SMLP4()
+    elif args.model == "LeNet":
+        model = SLeNet()
+    elif args.model == "CIFAR":
+        model = CIFAR()
+    elif args.model == "Res18":
+        model = resnet.resnet18(num_classes = 10)
+    elif args.model == "TIN":
+        model = resnet.resnet18(num_classes = 200)
+    elif args.model == "QLeNet":
+        model = QSLeNet()
+    elif args.model == "QCIFAR":
+        model = QCIFAR()
+    elif args.model == "QRes18":
+        model = qresnet.resnet18(num_classes = 10)
+    elif args.model == "QDENSE":
+        model = qdensnet.densenet121(num_classes = 10)
+    elif args.model == "QTIN":
+        model = qresnet.resnet18(num_classes = 200)
+    elif args.model == "QVGG":
+        model = qvgg.vgg11(num_classes = 200)
+    else:
+        NotImplementedError
 
     model.to(device)
     model.push_S_device()
@@ -200,7 +254,7 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
     args.train_epoch = 30
-    args.dev_var = 0.3
+    # args.dev_var = 0.3
     # args.train_var = 0.3
     args.train_var = 0.0
     args.verbose = True
@@ -221,16 +275,18 @@ if __name__ == "__main__":
     performance = NEachEval(args.dev_var, 0.0)
     print(f"No mask noise acc: {performance:.4f}")
     """
+    parent_path = args.model_path
     args.train_var = 0.0
     header = 1
     model.from_first_back_second()
-    state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt", map_location="cpu")
+    state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.clear_noise()
-    print(f"No mask no noise: {CEval():.4f}")
-    # print(f"No mask w/ noise: {NEachEval(args.dev_var, args.write_var):.4f}")
     model.to_first_only()
+    print(f"No mask no noise: {CEval():.4f}")
+    no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
+    print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     def my_target(x,y):
         return (y+1)%10
     max_list = []
@@ -239,7 +295,7 @@ if __name__ == "__main__":
     for _ in range(1):
         avg_performance = []
         model.clear_noise()
-        attacker = WCW(model, c=1e-8, kappa=0, steps=10, lr=0.01, method="l2")
+        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method="l2")
         # attacker.set_mode_targeted_random(n_classses=10)
         attacker.set_mode_targeted_by_function(my_target)
         attacker(testloader)
@@ -251,3 +307,5 @@ if __name__ == "__main__":
     print(f"Max diff: {np.mean(max_list):.3f}")
     print(f"L2  diff: {np.mean(avg_list):.3f}")
     print(f"Avg  acc: {np.mean(acc_list):.4f}")
+    model.clear_noise()
+    print(f"No mask no noise: {CEval():.4f}")
