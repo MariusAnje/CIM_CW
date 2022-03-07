@@ -225,7 +225,7 @@ def nas(device, dir='experiment'):
     logger.info('=' * 50 +
                 "Start exploring architecture " + '=' * 50)
     
-    rollout = [1, 2, 0, 0, 0, 0, 2, 2, 0, 0, 3, 1, 3, 2, 0, 1, 3, 0, 2, 3, 0, 0, 3, 1, 3, 0, 2, 0, 0, 1, 1, 1, 1, 1, 2, 1]
+    rollout = [2, 2, 0, 0, 2, 0, 3, 0, 0, 0, 0, 0, 1, 3, 1, 1, 1, 0, 3, 3, 0, 0, 1, 1, 3, 1, 0, 2, 1, 0, 3, 2, 0, 0, 3, 0]
     paras = agent.agent._format_rollout(rollout)
     logger.info("Sample Architecture ID: {}, Sampled actions: {}".format(
                 child_id, rollout))

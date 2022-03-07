@@ -119,7 +119,13 @@ parser.add_argument(
 parser.add_argument(
     '-c', '--cw_c',
     type=float,
-    default=1e-5,
+    default=1e-6,
+    help="hyper parameter for CW attack"
+    )
+parser.add_argument(
+    '-a', '--alpha',
+    type=float,
+    default=0.5,
     help="hyper parameter for CW attack"
     )
 
@@ -192,6 +198,11 @@ def attack_wcw(logger, model, val_data, quan_paras):
     mean_attack = np.mean(acc_list)
     return mean_attack
 
+
+def reware_function(mean_noise, mean_attack, alpha):
+    reward = (1-alpha) * mean_noise + alpha * mean_attack
+    return reward
+
 def nas(device, dir='experiment'):
     if os.path.exists(dir) is False:
         os.makedirs(dir)
@@ -255,15 +266,13 @@ def nas(device, dir='experiment'):
                 multi_gpu=False, do_bn=False)
             model.push_S_device()
             model.to_first_only()
-            _, reward = backend.fit(
+            _, mean_noise = backend.fit(
                 model, optimizer, train_data, val_data, quan_paras=quan_paras,
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
+            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
+            reward = reware_function(mean_noise, mean_attack, args.alpha)
             X.append(XX)
             y.append(reward)
-
-            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
-            mean_noise  = reward
-            reward = mean_noise + mean_attack
 
         if args.estimate and e >= args.train_episode:
             reward = clf.predict([XX])[0].item()
@@ -367,16 +376,13 @@ def sync_search(device, dir='experiment'):
                 multi_gpu=False, do_bn=False)
             model.push_S_device()
             model.to_first_only()
-            _, reward = backend.fit(
+            _, mean_noise = backend.fit(
                 model, optimizer, train_data, val_data, quan_paras=quan_paras,
                 epochs=args.epochs, verbosity=args.verbosity, dev_var = args.dev_var)
-            model.clear_noise()
+            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
+            reward = reware_function(mean_noise, mean_attack, args.alpha)
             X.append(XX)
             y.append(reward)
-
-            mean_attack = attack_wcw(logger, model, val_data, quan_paras)
-            mean_noise  = reward
-            reward = mean_noise + mean_attack
             
         if args.estimate and e >= args.train_episode:
             reward = clf.predict([XX])[0].item()
