@@ -156,3 +156,4 @@ Train.job
 # This thing
 experiment/
 pretrained/
+*.ipynb

@@ -485,6 +485,11 @@ class WCW(Attack):
                     w = torch.cat([w, m.noise.view(-1)])
         return w.abs().max()
 
+    def copy_grad(self):
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                m.noise.grad.data = m.op.weight.grad.data
+
     def forward(self, testloader):
         r"""
         Overridden.
@@ -516,6 +521,7 @@ class WCW(Attack):
                 cost = self.c*f_loss + metric
                 optimizer.zero_grad()
                 cost.backward()
+                # self.copy_grad()
                 optimizer.step()
 
     def tanh_space(self, x):
