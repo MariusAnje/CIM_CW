@@ -1,3 +1,4 @@
+from cProfile import label
 import torch
 import torchvision
 from torch import optim
@@ -15,7 +16,7 @@ from tqdm import tqdm
 import time
 import argparse
 import os
-from cw_attack import Attack, WCW
+from cw_attack import Attack, WCW, binary_search_c
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -26,6 +27,7 @@ def CEval():
     correct = 0
     # model.clear_noise()
     with torch.no_grad():
+        # for images, labels in tqdm(testloader, leave=False):
         for images, labels in testloader:
             images, labels = images.to(device), labels.to(device)
             # images = images.view(-1, 784)
@@ -37,6 +39,34 @@ def CEval():
             correct += correction.sum()
             total += len(correction)
     return (correct/total).cpu().numpy()
+
+def CEval_Dist(num_classes=10):
+    model.eval()
+    total = 0
+    correct = 0
+    res_dist = torch.LongTensor([0 for _ in range(num_classes)])
+    crr_dist = torch.LongTensor([0 for _ in range(num_classes)])
+    # model.clear_noise()
+    with torch.no_grad():
+        # for images, labels in tqdm(testloader, leave=False):
+        for images, labels in testloader:
+            images, labels = images.to(device), labels.to(device)
+            # images = images.view(-1, 784)
+            outputs = model(images)
+            if len(outputs) == 2:
+                outputs = outputs[0]
+            predictions = outputs.argmax(dim=1)
+            correction = predictions == labels
+            predict_list = predictions.tolist()
+            for i in range(len(res_dist)):
+                res_dist[i] += predict_list.count(i)
+            for i in range(len(predict_list)):
+                if correction[i] == True:
+                    crr_dist[predict_list[i]] += 1
+            correct += correction.sum()
+            total += len(correction)
+    print(crr_dist)
+    return (correct/total).cpu().numpy(), res_dist
 
 def NEval(dev_var, write_var):
     model.eval()
@@ -287,8 +317,8 @@ if __name__ == "__main__":
     print(f"No mask no noise: {CEval():.4f}")
     no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
     print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
-    def my_target(x,y):
-        return (y+1)%10
+    # def my_target(x,y):
+    #     return (y+1)%10
     max_list = []
     avg_list = []
     acc_list = []
@@ -297,7 +327,8 @@ if __name__ == "__main__":
         model.clear_noise()
         attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method="l2")
         # attacker.set_mode_targeted_random(n_classses=10)
-        attacker.set_mode_targeted_by_function(my_target)
+        # attacker.set_mode_targeted_by_function(my_target)
+        attacker.set_mode_default()
         attacker(testloader)
         w = attacker.get_noise()
         max_list.append(attacker.noise_max().item())
@@ -307,5 +338,13 @@ if __name__ == "__main__":
     print(f"Max diff: {np.mean(max_list):.3f}")
     print(f"L2  diff: {np.mean(avg_list):.3f}")
     print(f"Avg  acc: {np.mean(acc_list):.4f}")
-    model.clear_noise()
-    print(f"No mask no noise: {CEval():.4f}")
+    torch.save(attacker.get_noise(), "noise_QLeNet.pt")
+    acc, res_dist = CEval_Dist(num_classes=10)
+    print(res_dist.tolist())
+
+    # final_accuracy, final_max, final_l2, final_c = binary_search_c(search_runs=10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.05, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2")
+    # print(f"Acc: {final_accuracy:.4f}, Max: {final_max:.5f}, l2: {final_l2:.5f}, C: {final_c:.4e}")
+    # acc, res_dist = CEval_Dist(num_classes=10)
+    # print(res_dist.tolist())
+    # model.clear_noise()
+    # print(f"No mask no noise: {CEval():.4f}")

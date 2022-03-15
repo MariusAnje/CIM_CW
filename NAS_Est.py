@@ -184,11 +184,12 @@ def attack_wcw(logger, model, val_data, quan_paras):
     max_list = []
     avg_list = []
     acc_list = []
-    for _ in range(9):
+    for _ in range(1):
         model.clear_noise()
         attacker = WCW(model, c=args.cw_c, kappa=0, steps=10, lr=0.01, method=args.attack)
         # attacker.set_mode_targeted_random(n_classses=10)
-        attacker.set_mode_targeted_by_function(my_target)
+        # attacker.set_mode_targeted_by_function(my_target)
+        attacker.set_mode_default()
         attacker(val_data)
         max_list.append(attacker.noise_max().item())
         avg_list.append(np.sqrt(attacker.noise_l2().item()))
