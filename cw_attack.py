@@ -487,6 +487,7 @@ class WCW(Attack):
         return w.abs().max()
     
     def collect_loss_ori(self, testloader):
+        self.testloader = testloader
         if not isinstance(testloader.sampler, torch.utils.data.sampler.SequentialSampler):
             raise NotImplementedError("Don't use random sampler for dataloader")
         loss_set = []
@@ -530,7 +531,6 @@ class WCW(Attack):
         optimizer = optim.Adam(w, lr=self.lr)
 
         if self.method == "loss":
-            self.testloader = testloader
             self.loss_set = self.collect_loss_ori(testloader)
 
         for step in tqdm(range(self.steps), leave=False):
