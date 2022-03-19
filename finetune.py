@@ -225,7 +225,22 @@ def nas(device, dir='experiment'):
     logger.info('=' * 50 +
                 "Start exploring architecture " + '=' * 50)
     
-    rollout = [1, 2, 0, 0, 2, 0, 0, 3, 0, 0, 2, 0, 3, 2, 1, 2, 0, 0, 2, 3, 1, 0, 1, 0, 2, 1, 0, 1, 3, 0, 0, 0, 0, 0, 2, 1]
+    # rollout = [1, 2, 0, 0, 2, 0, 0, 3, 0, 0, 2, 0, 3, 2, 1, 2, 0, 0, 2, 3, 1, 0, 1, 0, 2, 1, 0, 1, 3, 0, 0, 0, 0, 0, 2, 1] # 7726 1158
+    
+    # Namespace(alpha=0.5, attack='l2', batch_size=128, cw_c=1e-06, dataset='CIFAR10', dev_var=0.3, episodes=500, epochs=50, estimate=False, gpu=0, layers=6, learning_rate=0.2, mode='nas', optimizer='Adam', seed=234324, test_gt=False, train_episode=50, verbosity=0)
+    rollout = [1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 3, 0, 0, 2, 0, 0, 1, 0, 1, 2, 0, 1, 3, 0, 1, 2, 0, 1, 2, 1] # 7835 1119
+    rollout = [2, 2, 0, 2, 1, 0, 2, 2, 2, 2, 0, 0, 0, 3, 0, 0, 2, 0, 1, 2, 0, 0, 1, 0, 3, 2, 0, 2, 2, 1, 1, 2, 1, 2, 1, 0] # 7640 0726
+    rollout = [2, 2, 1, 0, 3, 0, 2, 2, 0, 1, 3, 0, 2, 3, 0, 2, 2, 1, 3, 3, 1, 1, 2, 1, 2, 0, 0, 1, 3, 0, 2, 1, 1, 0, 3, 0] # 7465 1153
+    rollout = [2, 1, 1, 0, 0, 0, 0, 2, 0, 1, 3, 1, 3, 3, 0, 2, 2, 1, 3, 3, 0, 0, 2, 1, 2, 0, 1, 0, 1, 1, 0, 2, 1, 1, 2, 1] # 7278 1207
+    rollout = [3, 1, 0, 0, 2, 0, 2, 3, 0, 0, 0, 0, 1, 1, 1, 2, 1, 0, 1, 3, 1, 1, 2, 0, 1, 3, 0, 2, 0, 0, 3, 3, 2, 1, 2, 0] # 7465 1222
+
+    # Namespace(alpha=0.5, attack='l2', batch_size=128, cw_c=1e-06, dataset='CIFAR10', dev_var=0.3, episodes=500, epochs=50, estimate=False, gpu=0, layers=6, learning_rate=0.2, mode='nas', optimizer='Adam', seed=23, test_gt=False, train_episode=50, verbosity=0)
+    rollout = [1, 3, 0, 0, 2, 1, 0, 1, 2, 1, 3, 1, 1, 0, 2, 1, 3, 0, 3, 2, 0, 2, 3, 0, 0, 0, 1, 2, 3, 0, 0, 0, 0, 1, 2, 1] # 6142 1404
+    rollout = [2, 2, 0, 1, 0, 0, 2, 2, 1, 1, 1, 0, 0, 2, 1, 2, 3, 0, 1, 1, 1, 2, 1, 0, 3, 1, 1, 1, 1, 1, 1, 2, 2, 0, 3, 0] # 6842 1690
+    rollout = [1, 2, 0, 2, 2, 1, 2, 1, 0, 0, 2, 0, 1, 0, 1, 2, 0, 0, 3, 1, 0, 0, 0, 0, 3, 1, 1, 1, 2, 0, 0, 1, 0, 1, 3, 1] # 7322 1072
+    rollout = [0, 3, 0, 1, 1, 0, 2, 0, 0, 1, 1, 0, 0, 3, 0, 0, 3, 1, 0, 1, 0, 2, 0, 1, 2, 1, 2, 2, 0, 1, 1, 0, 0, 1, 3, 1] # 7323 1279
+    rollout = [1, 3, 0, 0, 3, 0, 1, 2, 0, 1, 1, 0, 3, 1, 1, 1, 0, 0, 0, 1, 1, 0, 2, 0, 3, 1, 0, 1, 1, 1, 0, 0, 2, 2, 0, 0] # 7215 1153
+    
     paras = agent.agent._format_rollout(rollout)
     logger.info("Sample Architecture ID: {}, Sampled actions: {}".format(
                 child_id, rollout))
@@ -288,7 +303,8 @@ def sync_search(device, dir='experiment'):
     child_id, total_time = 0, 0
     logger.info('=' * 50 +
                 "Start exploring architecture & quantization space" + '=' * 50)
-    rollout = [1, 2, 0, 0, 0, 0, 2, 2, 0, 0, 3, 1, 3, 2, 0, 1, 3, 0, 2, 3, 0, 0, 3, 1, 3, 0, 2, 0, 0, 1, 1, 1, 1, 1, 2, 1]
+    
+    
     paras = agent.agent._format_rollout(rollout)
     logger.info("Sample Architecture ID: {}, Sampled actions: {}".format(
                 child_id, rollout))
