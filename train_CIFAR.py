@@ -315,8 +315,11 @@ if __name__ == "__main__":
     model.clear_noise()
     model.to_first_only()
     print(f"No mask no noise: {CEval():.4f}")
-    no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
-    print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
+    try:
+        no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
+        print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
+    except:
+        pass
     # def my_target(x,y):
     #     return (y+1)%10
     max_list = []
@@ -338,9 +341,12 @@ if __name__ == "__main__":
     print(f"Max diff: {np.mean(max_list):.3f}")
     print(f"L2  diff: {np.mean(avg_list):.3f}")
     print(f"Avg  acc: {np.mean(acc_list):.4f}")
-    torch.save(attacker.get_noise(), "noise_QLeNet.pt")
+    if attacker.method == "loss":
+        print(attacker.total_loss_l2())
     acc, res_dist = CEval_Dist(num_classes=10)
     print(res_dist.tolist())
+    attacker.collect_loss_ori(testloader)
+    print(attacker.total_loss_l2())
 
     # final_accuracy, final_max, final_l2, final_c = binary_search_c(search_runs=10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.05, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2")
     # print(f"Acc: {final_accuracy:.4f}, Max: {final_max:.5f}, l2: {final_l2:.5f}, C: {final_c:.4e}")

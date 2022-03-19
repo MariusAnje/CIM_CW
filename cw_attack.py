@@ -457,6 +457,7 @@ class WCW(Attack):
         self.lr = lr
         self._supported_mode = ['default', 'targeted']
         self.method = method
+        self.criteria = nn.CrossEntropyLoss()
     
     def get_noise(self):
         w = []
@@ -484,6 +485,33 @@ class WCW(Attack):
                 else:
                     w = torch.cat([w, m.noise.view(-1)])
         return w.abs().max()
+    
+    def collect_loss_ori(self, testloader):
+        if not isinstance(testloader.sampler, torch.utils.data.sampler.SequentialSampler):
+            raise NotImplementedError("Don't use random sampler for dataloader")
+        loss_set = []
+        for images, labels in testloader:
+            images, labels = images.to(self.device), labels.to(self.device)
+            outputs = self.model(images)
+            loss = self.criteria(outputs, labels)
+            loss_set.append(loss.item())
+        return loss_set
+
+    def cal_loss_l2(self, i, images, labels):
+        images, labels = images.to(self.device), labels.to(self.device)
+        outputs = self.model(images)
+        loss = self.criteria(outputs, labels)
+        return (loss - self.loss_set[i]).pow(2)
+    
+    def total_loss_l2(self):
+        running_l2 = 0.0
+        for i, (images, labels) in enumerate(self.testloader):
+            images, labels = images.to(self.device), labels.to(self.device)
+            outputs = self.model(images)
+            loss = self.criteria(outputs, labels)
+            l2 = (loss - self.loss_set[i]).pow(2)
+            running_l2 += l2.item()
+        return running_l2 / i+1
 
     def copy_grad(self):
         for m in self.model.modules():
@@ -494,16 +522,21 @@ class WCW(Attack):
         r"""
         Overridden.
         """
+        self.model.eval()
         method = self.method
         w = self.get_noise()
 
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
         optimizer = optim.Adam(w, lr=self.lr)
 
-        # for step in tqdm(range(self.steps), leave=False):
-        for step in range(self.steps):
-            # for images, labels in tqdm(testloader, leave=False):
-            for images, labels in testloader:
+        if self.method == "loss":
+            self.testloader = testloader
+            self.loss_set = self.collect_loss_ori(testloader)
+
+        for step in tqdm(range(self.steps), leave=False):
+        # for step in range(self.steps):
+            for i, (images, labels) in enumerate(tqdm(testloader, leave=False)):
+            # for i, (images, labels) in enumerate(testloader):
                 if self._targeted:
                     target_labels = self._get_target_label(images, labels)
                 images, labels = images.to(self.device), labels.to(self.device)
@@ -517,6 +550,10 @@ class WCW(Attack):
                     metric = self.noise_l2()
                 elif method == "max":
                     metric = self.noise_max()
+                elif method == "loss":
+                    metric = self.cal_loss_l2(i, images, labels)
+                else:
+                    raise NotImplementedError
 
                 cost = self.c*f_loss + metric
                 optimizer.zero_grad()

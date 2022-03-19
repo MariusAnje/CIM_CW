@@ -141,7 +141,8 @@ cython_debug/
 *.pt
 *.o*
 *.svg
-# *.ipynb
+*.png
+*.ipynb
 *.pdf
 *.xlsx
 Train.job
@@ -156,4 +157,3 @@ Train.job
 # This thing
 experiment/
 pretrained/
-*.ipynb
