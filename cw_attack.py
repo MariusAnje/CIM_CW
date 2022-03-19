@@ -496,7 +496,7 @@ class WCW(Attack):
             outputs = self.model(images)
             loss = self.criteria(outputs, labels)
             loss_set.append(loss.item())
-        return loss_set
+        self.loss_set = loss_set
 
     def cal_loss_l2(self, i, images, labels):
         images, labels = images.to(self.device), labels.to(self.device)
@@ -531,7 +531,7 @@ class WCW(Attack):
         optimizer = optim.Adam(w, lr=self.lr)
 
         if self.method == "loss":
-            self.loss_set = self.collect_loss_ori(testloader)
+            self.collect_loss_ori(testloader)
 
         for step in tqdm(range(self.steps), leave=False):
         # for step in range(self.steps):
