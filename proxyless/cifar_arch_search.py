@@ -112,7 +112,8 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(args.manual_seed)
     np.random.seed(args.manual_seed)
 
-    #os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+    if torch.cuda.is_available():
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     os.makedirs(args.path, exist_ok=True)
 
