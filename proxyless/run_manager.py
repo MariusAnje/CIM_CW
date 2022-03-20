@@ -88,6 +88,9 @@ class RunConfig:
             if self.dataset == 'imagenet':
                 from data_providers.imagenet import ImagenetDataProvider
                 self._data_provider = ImagenetDataProvider(**self.data_config)
+            elif self.dataset == 'cifar10':
+                from data_providers.cifar10 import CIFAR10DataProvider
+                self._data_provider = CIFAR10DataProvider(**self.data_config)
             else:
                 raise ValueError('do not support: %s' % self.dataset)
         return self._data_provider
@@ -186,8 +189,8 @@ class RunManager:
             self.net.to(self.device)
             cudnn.benchmark = True
         else:
-            raise ValueError
-            # self.device = torch.device('cpu')
+            # raise ValueError
+            self.device = torch.device('cpu')
 
         # net info
         self.print_net_info(measure_latency)
@@ -195,12 +198,21 @@ class RunManager:
         self.criterion = nn.CrossEntropyLoss()
         if self.run_config.no_decay_keys:
             keys = self.run_config.no_decay_keys.split('#')
-            self.optimizer = self.run_config.build_optimizer([
-                self.net.module.get_parameters(keys, mode='exclude'),  # parameters with weight decay
-                self.net.module.get_parameters(keys, mode='include'),  # parameters without weight decay
-            ])
+            if isinstance(self.net, nn.DataParallel):
+                self.optimizer = self.run_config.build_optimizer([
+                    self.net.module.get_parameters(keys, mode='exclude'),  # parameters with weight decay
+                    self.net.module.get_parameters(keys, mode='include'),  # parameters without weight decay
+                ])
+            else:
+                self.optimizer = self.run_config.build_optimizer([
+                    self.net.get_parameters(keys, mode='exclude'),  # parameters with weight decay
+                    self.net.get_parameters(keys, mode='include'),  # parameters without weight decay
+                ])
         else:
-            self.optimizer = self.run_config.build_optimizer(self.net.module.weight_parameters())
+            if isinstance(self.net, nn.DataParallel):
+                self.optimizer = self.run_config.build_optimizer(self.net.module.weight_parameters())
+            else:
+                self.optimizer = self.run_config.build_optimizer(self.net.weight_parameters())
 
     """ save path and log path """
 
@@ -247,7 +259,10 @@ class RunManager:
         if given_net is not None:
             net = given_net
         else:
-            net = self.net.module
+            if isinstance(self.net, nn.DataParallel):
+                net = self.net.module
+            else:
+                net = self.net
 
         if l_type == 'mobile':
             predicted_latency = 0
@@ -369,7 +384,10 @@ class RunManager:
 
     def save_model(self, checkpoint=None, is_best=False, model_name=None):
         if checkpoint is None:
-            checkpoint = {'state_dict': self.net.module.state_dict()}
+            if isinstance(self.net, nn.DataParallel):
+                checkpoint = {'state_dict': self.net.module.state_dict()}
+            else:
+                checkpoint = {'state_dict': self.net.state_dict()}
 
         if model_name is None:
             model_name = 'checkpoint.pth.tar'
@@ -406,7 +424,10 @@ class RunManager:
             else:
                 checkpoint = torch.load(model_fname, map_location='cpu')
 
-            self.net.module.load_state_dict(checkpoint['state_dict'])
+            if isinstance(self.net, nn.DataParallel):
+                self.net.module.load_state_dict(checkpoint['state_dict'])
+            else:
+                self.net.load_state_dict(checkpoint['state_dict'])
             # set new manual seed
             new_manual_seed = int(time.time())
             torch.manual_seed(new_manual_seed)
@@ -430,7 +451,10 @@ class RunManager:
         """ dump run_config and net_config to the model_folder """
         os.makedirs(self.path, exist_ok=True)
         net_save_path = os.path.join(self.path, 'net.config')
-        json.dump(self.net.module.config, open(net_save_path, 'w'), indent=4)
+        if isinstance(self.net, nn.DataParallel):
+            json.dump(self.net.module.config, open(net_save_path, 'w'), indent=4)
+        else:
+            json.dump(self.net.config, open(net_save_path, 'w'), indent=4)
         if print_info:
             print('Network configs dump to %s' % net_save_path)
 
@@ -597,10 +621,18 @@ class RunManager:
                 self.write_log(val_log, 'valid')
             else:
                 is_best = False
-
-            self.save_model({
-                'epoch': epoch,
-                'best_acc': self.best_acc,
-                'optimizer': self.optimizer.state_dict(),
-                'state_dict': self.net.module.state_dict(),
-            }, is_best=is_best)
+            
+            if isinstance(self.net, nn.DataParallel):
+                self.save_model({
+                    'epoch': epoch,
+                    'best_acc': self.best_acc,
+                    'optimizer': self.optimizer.state_dict(),
+                    'state_dict': self.net.module.state_dict(),
+                }, is_best=is_best)
+            else:
+                self.save_model({
+                    'epoch': epoch,
+                    'best_acc': self.best_acc,
+                    'optimizer': self.optimizer.state_dict(),
+                    'state_dict': self.net.state_dict(),
+                }, is_best=is_best)

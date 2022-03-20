@@ -23,7 +23,7 @@ def build_activation(act_func, inplace=True):
 
 # noinspection PyUnresolvedReferences
 def cross_entropy_with_label_smoothing(pred, target, label_smoothing=0.1):
-    logsoftmax = nn.LogSoftmax()
+    logsoftmax = nn.LogSoftmax(dim=1)
     n_classes = pred.size(1)
     # convert to one-hot
     target = torch.unsqueeze(target, 1)
@@ -67,7 +67,8 @@ def accuracy(output, target, topk=(1,)):
 
     res = []
     for k in topk:
-        correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+        top = correct[:k,:]
+        correct_k = top.reshape(-1).float().sum(0, keepdim=True)
         res.append(correct_k.mul_(100.0 / batch_size))
     return res
 

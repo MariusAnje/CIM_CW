@@ -164,7 +164,10 @@ class ArchSearchRunManager:
 
     @property
     def net(self):
-        return self.run_manager.net.module
+        if isinstance(self.run_manager.net, nn.DataParallel):
+            return self.run_manager.net.module
+        else:
+            return self.run_manager.net
 
     def write_log(self, log_str, prefix, should_print=True, end='\n'):
         with open(os.path.join(self.run_manager.logs_path, '%s.log' % prefix), 'a') as fout:
