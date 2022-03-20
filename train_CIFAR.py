@@ -65,7 +65,7 @@ def CEval_Dist(num_classes=10):
                     crr_dist[predict_list[i]] += 1
             correct += correction.sum()
             total += len(correction)
-    print(crr_dist)
+    print(f"Correction dict: {crr_dist.tolist()}")
     return (correct/total).cpu().numpy(), res_dist
 
 def NEval(dev_var, write_var):
@@ -161,8 +161,6 @@ if __name__ == "__main__":
             help='see training process')
     parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG"],
             help='model to use')
-    parser.add_argument('--method', action='store', default="SM", choices=["second", "magnitude", "saliency", "random", "SM"],
-            help='method used to calculate saliency')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
     parser.add_argument('--header', action='store',type=int, default=1,
@@ -187,6 +185,8 @@ if __name__ == "__main__":
             help='# of runs for attack')
     parser.add_argument('--attack_lr', action='store',type=float, default=1e-4,
             help='learning rate for attack')
+    parser.add_argument('--attack_method', action='store', default="l2", choices=["max", "l2", "loss"],
+            help='method used for attack')
     args = parser.parse_args()
 
     print(args)
@@ -328,25 +328,25 @@ if __name__ == "__main__":
     for _ in range(1):
         avg_performance = []
         model.clear_noise()
-        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method="l2")
+        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
+        attacker.collect_loss_ori(testloader)
         attacker(testloader)
         w = attacker.get_noise()
         max_list.append(attacker.noise_max().item())
         avg_list.append(np.sqrt(attacker.noise_l2().item()))
         accuracy = CEval().item()
         acc_list.append(accuracy)
+    print(f"Attack c: {args.attack_c:.3e}")
     print(f"Max diff: {np.mean(max_list):.3f}")
     print(f"L2  diff: {np.mean(avg_list):.3f}")
     print(f"Avg  acc: {np.mean(acc_list):.4f}")
-    if attacker.method == "loss":
-        print(attacker.total_loss_l2())
+    print(f"Loss  l2: {attacker.total_loss_l2()}")
     acc, res_dist = CEval_Dist(num_classes=10)
-    print(res_dist.tolist())
-    attacker.collect_loss_ori(testloader)
-    print(attacker.total_loss_l2())
+    print(f"Prediction: {res_dist.tolist()}")
+    
 
     # final_accuracy, final_max, final_l2, final_c = binary_search_c(search_runs=10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.05, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2")
     # print(f"Acc: {final_accuracy:.4f}, Max: {final_max:.5f}, l2: {final_l2:.5f}, C: {final_c:.4e}")

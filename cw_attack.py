@@ -512,7 +512,7 @@ class WCW(Attack):
             loss = self.criteria(outputs, labels)
             l2 = (loss - self.loss_set[i]).pow(2)
             running_l2 += l2.item()
-        return running_l2 / i+1
+        return running_l2 / (i+1)
 
     def copy_grad(self):
         for m in self.model.modules():
@@ -533,10 +533,12 @@ class WCW(Attack):
         if self.method == "loss":
             self.collect_loss_ori(testloader)
 
-        for step in tqdm(range(self.steps), leave=False):
-        # for step in range(self.steps):
-            for i, (images, labels) in enumerate(tqdm(testloader, leave=False)):
-            # for i, (images, labels) in enumerate(testloader):
+        # the_loader = tqdm(range(self.steps))
+        the_loader = range(self.steps)
+        for step in the_loader:
+            running_cost = 0.0
+            # for i, (images, labels) in enumerate(tqdm(testloader, leave=False)):
+            for i, (images, labels) in enumerate(testloader):
                 if self._targeted:
                     target_labels = self._get_target_label(images, labels)
                 images, labels = images.to(self.device), labels.to(self.device)
@@ -556,10 +558,13 @@ class WCW(Attack):
                     raise NotImplementedError
 
                 cost = self.c*f_loss + metric
+                running_cost += cost
                 optimizer.zero_grad()
                 cost.backward()
                 # self.copy_grad()
                 optimizer.step()
+            if isinstance(the_loader, tqdm):
+                    the_loader.set_description(f"{running_cost/len(the_loader):.4f}")
 
     def tanh_space(self, x):
         return 1/2*(torch.tanh(x) + 1)
