@@ -238,6 +238,7 @@ class NLinear(NModule):
 
     def forward(self, x):
         x = self.function(x, self.op.weight + self.noise, self.op.bias)
+        # x = self.function(x, self.op.weight, self.op.bias)
         return x
 
 class NConv2d(NModule):
@@ -426,6 +427,11 @@ class SModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.first_only = False
+    
+    def init_weight(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                torch.nn.init.kaiming_normal_(m.weight)
     
     def num_flat_features(self, x):
         size = x.size()[1:]  # all dimensions except the batch dimension
