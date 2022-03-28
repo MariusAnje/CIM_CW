@@ -4,7 +4,12 @@
 
 import math
 
-import torch.nn as nn
+import torch
+from torch import nn
+from torch import functional
+from torch._C import device
+from torch.nn.modules.pooling import MaxPool2d
+import numpy as np
 
 
 class MyModule(nn.Module):
@@ -27,8 +32,122 @@ class MyModule(nn.Module):
     def get_flops(self, x):
         raise NotImplementedError
 
+class NModule(nn.Module):
+    def set_noise(self, dev_var, write_var, N, m):
+        # N: number of bits per weight, m: number of bits per device
+        # Dev_var: device variation before write and verify
+        # write_var: device variation after write and verity
+        scale = self.op.weight.abs().max()
+        noise_dev = torch.zeros_like(self.noise).to(self.op.weight.device)
+        # noise_write = torch.zeros_like(self.noise).to(self.op.weight.device)
+        # for i in range(1, N//m + 1):
+        #     if dev_var != 0:
+        #         noise_dev   += (torch.normal(mean=0., std=dev_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
+        #     if write_var != 0:
+        #         noise_write += (torch.normal(mean=0., std=write_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
+        
+        # noise_dev = noise_dev.to(self.op.weight.device) * scale
+        # noise_write = noise_write.to(self.op.weight.device) * scale
+        # self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
 
-class MyNetwork(MyModule):
+        self.noise = torch.normal(mean=0., std=dev_var, size=self.noise.size()).to(self.op.weight.device) * scale
+        
+    
+    def clear_noise(self):
+        self.noise = torch.zeros_like(self.op.weight)
+    
+    def push_S_device(self):
+        # self.mask = self.mask.to(self.op.weight.device)
+        self.noise = self.noise.to(self.op.weight.device)
+
+class NLinear(NModule):
+    def __init__(self, in_features, out_features, bias=True):
+        super().__init__()
+        self.op = nn.Linear(in_features, out_features, bias)
+        self.noise = torch.zeros_like(self.op.weight)
+        # self.mask = torch.ones_like(self.op.weight)
+        self.function = nn.functional.linear
+
+    def forward(self, x):
+        x = self.function(x, self.op.weight + self.noise, self.op.bias)
+        return x
+
+class NConv2d(NModule):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
+        super().__init__()
+        self.op = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias, padding_mode)
+        self.noise = torch.zeros_like(self.op.weight)
+        # self.mask = torch.ones_like(self.op.weight)
+        self.function = nn.functional.conv2d
+        self.in_channels = self.op.in_channels
+        self.out_channels = self.op.out_channels
+        self.kernel_size = self.op.kernel_size
+        self.stride = self.op.stride
+        self.padding = self.op.padding
+        self.dilation = self.op.dilation
+        self.groups = self.op.groups
+        self.padding_mode = self.op.padding_mode
+
+    def forward(self, x):
+        x = self.function(x, self.op.weight + self.noise, self.op.bias, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        return x
+
+class NAct(nn.Module):
+    def __init__(self, size):
+        super().__init__()
+        self.size = size
+        self.noise = torch.zeros(self.size)
+        # self.mask = torch.ones(self.size)
+    
+    def clear_noise(self):
+        self.noise = torch.zeros(self.size)
+    
+    def set_noise(self, var):
+        self.noise = torch.randn(self.size) * var
+        
+    def push_S_device(self, device):
+        # self.mask = self.mask.to(device)
+        self.noise = self.noise.to(device)
+
+    def forward(self, x):
+        return x + self.noise #* self.mask
+
+class NModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # all dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
+
+    def unpack_flattern(self, x):
+        return x.view(-1, self.num_flat_features(x))
+
+    def set_noise(self, dev_var, write_var, N=8, m=1):
+        for mo in self.modules():
+            if isinstance(mo, NModule):
+                mo.set_noise(dev_var, write_var, N, m)
+
+    def clear_noise(self):
+        for m in self.modules():
+            if isinstance(m, NModule) or isinstance(m, NAct):
+                m.clear_noise()
+    
+    def push_S_device(self):
+        for m in self.modules():
+            if isinstance(m, NModule):
+                m.push_S_device()
+                device = m.op.weight.device
+            if isinstance(m, NAct):
+                m.push_S_device(device)
+
+
+
+
+class MyNetwork(MyModule, NModel):
 
     def forward(self, x):
         raise NotImplementedError

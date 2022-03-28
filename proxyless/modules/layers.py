@@ -143,7 +143,7 @@ class ConvLayer(My2DLayer):
             padding[1] *= self.dilation
 
         weight_dict = OrderedDict()
-        weight_dict['conv'] = nn.Conv2d(
+        weight_dict['conv'] = NConv2d(
             self.in_channels, self.out_channels, kernel_size=self.kernel_size, stride=self.stride, padding=padding,
             dilation=self.dilation, groups=self.groups, bias=self.bias
         )
@@ -215,11 +215,11 @@ class DepthConvLayer(My2DLayer):
             padding[1] *= self.dilation
 
         weight_dict = OrderedDict()
-        weight_dict['depth_conv'] = nn.Conv2d(
+        weight_dict['depth_conv'] = NConv2d(
             self.in_channels, self.in_channels, kernel_size=self.kernel_size, stride=self.stride, padding=padding,
             dilation=self.dilation, groups=self.in_channels, bias=False
         )
-        weight_dict['point_conv'] = nn.Conv2d(
+        weight_dict['point_conv'] = NConv2d(
             self.in_channels, self.out_channels, kernel_size=1, groups=self.groups, bias=self.bias
         )
         if self.has_shuffle and self.groups > 1:
@@ -378,7 +378,7 @@ class LinearLayer(MyModule):
         else:
             modules['dropout'] = None
         # linear
-        modules['weight'] = {'linear': nn.Linear(self.in_features, self.out_features, self.bias)}
+        modules['weight'] = {'linear': NLinear(self.in_features, self.out_features, self.bias)}
 
         # add modules
         for op in self.ops_list:
@@ -432,7 +432,7 @@ class LinearLayer(MyModule):
         return LinearLayer(**config)
 
     def get_flops(self, x):
-        return self.linear.weight.numel(), self.forward(x)
+        return self.linear.op.weight.numel(), self.forward(x)
 
     @staticmethod
     def is_zero_layer():
@@ -462,20 +462,20 @@ class MBInvertedConvLayer(MyModule):
             self.inverted_bottleneck = None
         else:
             self.inverted_bottleneck = nn.Sequential(OrderedDict([
-                ('conv', nn.Conv2d(self.in_channels, feature_dim, 1, 1, 0, bias=False)),
+                ('conv', NConv2d(self.in_channels, feature_dim, 1, 1, 0, bias=False)),
                 ('bn', nn.BatchNorm2d(feature_dim)),
                 ('act', nn.ReLU6(inplace=True)),
             ]))
 
         pad = get_same_padding(self.kernel_size)
         self.depth_conv = nn.Sequential(OrderedDict([
-            ('conv', nn.Conv2d(feature_dim, feature_dim, kernel_size, stride, pad, groups=feature_dim, bias=False)),
+            ('conv', NConv2d(feature_dim, feature_dim, kernel_size, stride, pad, groups=feature_dim, bias=False)),
             ('bn', nn.BatchNorm2d(feature_dim)),
             ('act', nn.ReLU6(inplace=True)),
         ]))
 
         self.point_linear = nn.Sequential(OrderedDict([
-            ('conv', nn.Conv2d(feature_dim, out_channels, 1, 1, 0, bias=False)),
+            ('conv', NConv2d(feature_dim, out_channels, 1, 1, 0, bias=False)),
             ('bn', nn.BatchNorm2d(out_channels)),
         ]))
 

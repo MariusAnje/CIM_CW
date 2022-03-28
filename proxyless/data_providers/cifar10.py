@@ -29,7 +29,7 @@ class CIFAR10DataProvider(DataProvider):
             else:
                 assert isinstance(valid_size, int), 'invalid valid_size: %s' % valid_size
             train_indexes, valid_indexes = self.random_sample_valid_set(
-                [cls for _, cls in train_dataset.samples], valid_size, self.n_classes,
+                train_dataset.targets, valid_size, self.n_classes,
             )
             train_sampler = torch.utils.data.sampler.SubsetRandomSampler(train_indexes)
             valid_sampler = torch.utils.data.sampler.SubsetRandomSampler(valid_indexes)
@@ -39,8 +39,6 @@ class CIFAR10DataProvider(DataProvider):
                 train=True,
                 download=False,
                 transform=  transforms.Compose([
-                            transforms.Resize(self.resize_value),
-                            transforms.CenterCrop(self.image_size),
                             transforms.ToTensor(),
                             self.normalize,
                             ])
@@ -129,9 +127,9 @@ class CIFAR10DataProvider(DataProvider):
             ])
         else:
             train_transforms = transforms.Compose([
-                transforms.RandomResizedCrop(self.image_size, scale=(resize_scale, 1.0)),
+                # transforms.RandomResizedCrop(self.image_size, scale=(resize_scale, 1.0)),
                 transforms.RandomHorizontalFlip(),
-                color_transform,
+                # color_transform,
                 transforms.ToTensor(),
                 self.normalize,
             ])
@@ -139,8 +137,8 @@ class CIFAR10DataProvider(DataProvider):
 
     @property
     def resize_value(self):
-        return 256
+        return 32
 
     @property
     def image_size(self):
-        return 224
+        return 32

@@ -184,9 +184,10 @@ class RunManager:
 
         # move network to GPU if available
         if torch.cuda.is_available():
-            self.device = torch.device('cuda:0')
-            self.net = torch.nn.DataParallel(self.net)
+            self.device = torch.device(self.run_config.device)
+            # self.net = torch.nn.DataParallel(self.net)
             self.net.to(self.device)
+            self.net.push_S_device()
             cudnn.benchmark = True
         else:
             # raise ValueError
@@ -347,8 +348,8 @@ class RunManager:
 
     def print_net_info(self, measure_latency=None):
         # network architecture
-        if self.out_log:
-            print(self.net)
+        # if self.out_log:
+        #     print(self.net)
 
         # parameters
         if isinstance(self.net, nn.DataParallel):
@@ -504,7 +505,9 @@ class RunManager:
             for i, (images, labels) in enumerate(data_loader):
                 images, labels = images.to(self.device), labels.to(self.device)
                 # compute output
+                net.set_noise(self.run_config.sigma, 0.0)
                 output = net(images)
+                net.clear_noise()
                 loss = self.criterion(output, labels)
                 # measure accuracy and record loss
                 acc1, acc5 = accuracy(output, labels, topk=(1, 5))

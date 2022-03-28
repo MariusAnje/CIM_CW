@@ -115,7 +115,7 @@ class SModule(nn.Module):
         self.mask = torch.ones_like(self.op.weight)
 
     def push_S_device(self):
-        self.weightS = self.weightS.to(self.op.weight.device)
+        # self.weightS = self.weightS.to(self.op.weight.device)
         self.mask = self.mask.to(self.op.weight.device)
         self.noise = self.noise.to(self.op.weight.device)
 

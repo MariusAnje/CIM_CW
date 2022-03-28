@@ -42,10 +42,9 @@ parser.add_argument('--lr_schedule_type', type=str, default='cosine')
 # lr_schedule_param
 
 parser.add_argument('--dataset', type=str, default='cifar10', choices=['imagenet', 'cifar10'])
-parser.add_argument('--train_batch_size', type=int, default=128)
+parser.add_argument('--train_batch_size', type=int, default=64)
 parser.add_argument('--test_batch_size', type=int, default=128)
-# parser.add_argument('--valid_size', type=int, default=50000) # this line deleted
-parser.add_argument('--valid_size', type=int, default=None) # this line added
+parser.add_argument('--valid_size', type=int, default=None)
 
 parser.add_argument('--opt_type', type=str, default='sgd', choices=['sgd'])
 parser.add_argument('--momentum', type=float, default=0.9)  # opt_param
@@ -64,9 +63,9 @@ parser.add_argument('--resize_scale', type=float, default=0.08)
 parser.add_argument('--distort_color', type=str, default='normal', choices=['normal', 'strong', 'None'])
 
 """ net config """
-parser.add_argument('--width_stages', type=str, default='24,40,80,96,192,320')
-parser.add_argument('--n_cell_stages', type=str, default='4,4,4,4,4,1')
-parser.add_argument('--stride_stages', type=str, default='2,2,2,1,2,1')
+parser.add_argument('--width_stages', type=str, default='16,24,32,64,96,160,320')
+parser.add_argument('--n_cell_stages', type=str, default='1,2,3,4,3,3,1')
+parser.add_argument('--stride_stages', type=str, default='1,1,2,2,1,2,1')
 parser.add_argument('--width_mult', type=float, default=1.0)
 parser.add_argument('--bn_momentum', type=float, default=0.1)
 parser.add_argument('--bn_eps', type=float, default=1e-3)
@@ -85,7 +84,7 @@ parser.add_argument('--arch_adam_beta1', type=float, default=0)  # arch_opt_para
 parser.add_argument('--arch_adam_beta2', type=float, default=0.999)  # arch_opt_param
 parser.add_argument('--arch_adam_eps', type=float, default=1e-8)  # arch_opt_param
 parser.add_argument('--arch_weight_decay', type=float, default=0)
-parser.add_argument('--target_hardware', type=str, default=None, choices=['mobile', 'cpu', 'gpu8', 'flops', None])
+parser.add_argument('--target_hardware', type=str, default="flops", choices=['mobile', 'cpu', 'gpu8', 'flops', None])
 """ Grad hyper-parameters """
 parser.add_argument('--grad_update_arch_param_every', type=int, default=5)
 parser.add_argument('--grad_update_steps', type=int, default=1)
@@ -103,6 +102,7 @@ parser.add_argument('--rl_baseline_decay_weight', type=float, default=0.99)
 parser.add_argument('--rl_tradeoff_ratio', type=float, default=0.1)
 """ Other hyper-parameters"""
 parser.add_argument('--quant', type=bool, default=True)
+parser.add_argument('--alpha', type=float, default=0.5)
 
 
 if __name__ == '__main__':
@@ -111,9 +111,6 @@ if __name__ == '__main__':
     torch.manual_seed(args.manual_seed)
     torch.cuda.manual_seed_all(args.manual_seed)
     np.random.seed(args.manual_seed)
-
-    if torch.cuda.is_available():
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     os.makedirs(args.path, exist_ok=True)
 
@@ -126,6 +123,11 @@ if __name__ == '__main__':
     run_config = CIFAR10RunConfig(
         **args.__dict__
     )
+    run_config.alpha = args.alpha
+    if torch.cuda.is_available():
+        run_config.device = f"cuda:{args.gpu}"
+    else:
+        run_config.device = "cpu"
 
     # debug, adjust run_config
     if args.debug:
@@ -189,6 +191,7 @@ if __name__ == '__main__':
 
     # arch search run manager
     arch_search_run_manager = ArchSearchRunManager(args.path, super_net, run_config, arch_search_config)
+    arch_search_run_manager.net.push_S_device()
 
     # resume
     if args.resume:

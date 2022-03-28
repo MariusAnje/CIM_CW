@@ -46,10 +46,10 @@ class ImagenetRunConfig(RunConfig):
 
 class CIFAR10RunConfig(RunConfig):
     def __init__(self, n_epochs=150, init_lr=0.05, lr_schedule_type='cosine', lr_schedule_param=None,
-                 dataset='imagenet', train_batch_size=128, test_batch_size=128, valid_size=None,
+                 dataset='cifar10', train_batch_size=128, test_batch_size=128, valid_size=None,
                  opt_type='sgd', opt_param=None, weight_decay=4e-5, label_smoothing=0.1, no_decay_keys='bn',
                  model_init='he_fout', init_div_groups=False, validation_frequency=1, print_frequency=10,
-                 n_worker=4, resize_scale=0.08, distort_color='normal', **kwargs):
+                 n_worker=4, resize_scale=0.08, distort_color='normal', device='cuda:0', sigma=0.1, **kwargs):
         super(CIFAR10RunConfig, self).__init__(
             n_epochs, init_lr, lr_schedule_type, lr_schedule_param,
             dataset, train_batch_size, test_batch_size, valid_size,
@@ -60,6 +60,8 @@ class CIFAR10RunConfig(RunConfig):
         self.n_worker = n_worker
         self.resize_scale = resize_scale
         self.distort_color = distort_color
+        self.device = device 
+        self.sigma = sigma
 
         print(kwargs.keys())
 

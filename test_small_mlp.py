@@ -3,6 +3,7 @@ from sklearn import datasets
 import torch
 from matplotlib import pyplot as plt
 from models import *
+from tqdm import tqdm
 
 class SMLP1(SModel):
     def __init__(self):
@@ -58,29 +59,37 @@ class SMLP3(SModel):
         x = self.fc3(x)
         return x
 
+device = torch.device("cpu")
 xs = torch.linspace(6, 12, steps=100)
 ys = torch.linspace(0, 10, steps=100)
-x, y = torch.meshgrid(xs, ys, indexing='xy')
+x, y = torch.meshgrid(xs, ys)
 XX = torch.cat([x.reshape(-1,1),y.reshape(-1,1)],dim=1)
 yy = (y > (x - 9) ** 2).reshape(-1).to(torch.long)
 
 model = SMLP1()
 model = SMLP2()
 # model = SMLP3()
-model.to_first_only()
 criteria = nn.CrossEntropyLoss()
 # optimizer = torch.optim.SGD(model.parameters(),lr=1e-2, momentum=0.9, weight_decay=1e-5)
 optimizer = torch.optim.Adam(model.parameters(),lr=1e-1, weight_decay=1e-5)
 
+model.to_first_only()
 state_dict = torch.load("NMLP2.pt")
 model.load_state_dict(state_dict)
+XX.to(device)
+yy.to(device)
+model.to(device)
+model.from_first_back_second()
+model.to(device)
+model.push_S_device()
+model.to_first_only()
 
 outputs = model(XX)
 loss = criteria(outputs, yy)
 acc = (outputs.argmax(dim=1) == yy).sum() / len(yy)
 print(acc.item(), loss.item())
 
-a = torch.randn(100,2,8)
+a = torch.randn(100000,2,8)
 scale = (a ** 2).sum(dim=-1).sum(dim=-1).sqrt()
 for i in range(len(scale)):
     a[i,:,:] = a[i,:,:] / scale[i]
@@ -88,12 +97,14 @@ for i in range(len(scale)):
 model.clear_noise()
 pred_GT = model(XX).argmax(dim=1)
 
-for l2 in [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, 1000000]:
+l2_list = [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000, 100000, 1000000]
+
+for l2 in [l2_list[9]]:
     acc_list = []
     for i in range(len(a)):
         model.clear_noise()
-        model.fc1.noise += (a[i,0,:] * l2).to(torch.float32).view(4,2)
-        model.fc2.noise += (a[i,0,:] * l2).to(torch.float32).view(2,4)
+        model.fc1.noise.data += (a[i,0,:] * l2).to(torch.float32).view(4,2)
+        model.fc2.noise.data += (a[i,0,:] * l2).to(torch.float32).view(2,4)
         pred = model(XX).argmax(dim=1)
         acc = (pred == pred_GT).sum() / len(pred_GT)
         acc_list.append(acc.item())

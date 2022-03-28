@@ -3,7 +3,7 @@
 # International Conference on Learning Representations (ICLR), 2019.
 
 from run_manager import *
-
+from cw_attack import WCW
 
 class ArchSearchConfig:
 
@@ -273,7 +273,9 @@ class ArchSearchRunManager:
                 # compute output
                 self.net.reset_binary_gates()  # random sample binary gates
                 self.net.unused_modules_off()  # remove unused module for speedup
+                self.run_manager.net.set_noise(self.run_manager.run_config.sigma, 0.0)
                 output = self.run_manager.net(images)  # forward (DataParallel)
+                self.run_manager.net.clear_noise()
                 # loss
                 if self.run_manager.run_config.label_smoothing > 0:
                     loss = cross_entropy_with_label_smoothing(
@@ -371,7 +373,9 @@ class ArchSearchRunManager:
                     # compute output
                     self.net.reset_binary_gates()  # random sample binary gates
                     self.net.unused_modules_off()  # remove unused module for speedup
+                    self.run_manager.net.set_noise(self.run_manager.run_config.sigma, 0.0)
                     output = self.run_manager.net(images)  # forward (DataParallel)
+                    self.run_manager.net.clear_noise()
                     # loss
                     if self.run_manager.run_config.label_smoothing > 0:
                         loss = cross_entropy_with_label_smoothing(
@@ -487,9 +491,17 @@ class ArchSearchRunManager:
             self.net.unused_modules_off()  # remove unused module for speedup
             # validate the sampled network
             with torch.no_grad():
+                self.run_manager.net.set_noise(self.run_manager.run_config.sigma, 0.0)
                 output = self.run_manager.net(images)
+                self.run_manager.net.clear_noise()
                 acc1, acc5 = accuracy(output, labels, topk=(1, 5))
-            net_info = {'acc': acc1[0].item()}
+            attacker = WCW(self.run_manager.net, c=1, kappa=0, steps=10, lr=0.01, method="l2")
+            attacker([(images, labels)])
+            output = self.run_manager.net(images)
+            acc1_atk, acc5_atk = accuracy(output, labels, topk=(1, 5))
+            self.run_manager.net.clear_noise()
+            acc_reward = (1 - self.run_manager.run_config.alpha) * acc1 + self.run_manager.run_config.alpha * acc1_atk
+            net_info = {'acc': acc_reward[0].item()}
             # get additional net info for calculating the reward
             if self.arch_search_config.target_hardware is None:
                 pass
