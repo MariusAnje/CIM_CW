@@ -606,7 +606,7 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
         this_l2 = attacker.noise_l2().item()
         this_accuracy = acc_evaluator().item()
         if verbose:
-            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}")
+            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
         if this_accuracy > th_accuracy:
             last_bad_c = init_c
             init_c = (init_c + final_c) / 2

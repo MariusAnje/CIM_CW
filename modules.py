@@ -22,7 +22,7 @@ class SModule(nn.Module):
         # N: number of bits per weight, m: number of bits per device
         # Dev_var: device variation before write and verify
         # write_var: device variation after write and verity
-        scale = self.op.weight.abs().max()
+        scale = self.op.weight.abs().max().item()
         noise_dev = torch.zeros_like(self.noise).to(self.op.weight.device)
         noise_write = torch.zeros_like(self.noise).to(self.op.weight.device)
         for i in range(1, N//m + 1):
@@ -157,6 +157,7 @@ class SLinear(SModule):
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, xC):
@@ -183,6 +184,7 @@ class SConv2d(SModule):
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, xC):
@@ -201,7 +203,7 @@ class NModule(nn.Module):
         # N: number of bits per weight, m: number of bits per device
         # Dev_var: device variation before write and verify
         # write_var: device variation after write and verity
-        scale = self.op.weight.abs().max()
+        scale = self.op.weight.abs().max().item()
         noise_dev = torch.zeros_like(self.noise).to(self.op.weight.device)
         noise_write = torch.zeros_like(self.noise).to(self.op.weight.device)
         for i in range(1, N//m + 1):
@@ -220,6 +222,15 @@ class NModule(nn.Module):
     def push_S_device(self):
         self.mask = self.mask.to(self.op.weight.device)
         self.noise = self.noise.to(self.op.weight.device)
+    
+    def normalize(self):
+        if self.original_w is None:
+            self.original_w = self.op.weight.data
+        if (self.original_b is None) and (self.op.bias is not None):
+            self.original_b = self.op.bias.data
+        scale = self.op.weight.data.abs().max().item()
+        self.scale = scale
+        self.op.weight.data = self.op.weight.data / scale
 
 class NLinear(NModule):
     def __init__(self, in_features, out_features, bias=True):
@@ -228,17 +239,22 @@ class NLinear(NModule):
         self.noise = torch.zeros_like(self.op.weight)
         self.mask = torch.ones_like(self.op.weight)
         self.function = nn.functional.linear
+        self.scale = 1.0
 
     def copy_S(self):
         new = SLinear(self.op.in_features, self.op.out_features, False if self.op.bias is None else True)
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, x):
-        x = self.function(x, self.op.weight + self.noise, self.op.bias)
-        # x = self.function(x, self.op.weight, self.op.bias)
+        
+        x = self.function(x, self.op.weight + self.noise, None)
+        x = x * self.scale
+        if self.op.bias is not None:
+            x += self.op.bias
         return x
 
 class NConv2d(NModule):
@@ -248,16 +264,21 @@ class NConv2d(NModule):
         self.noise = torch.zeros_like(self.op.weight)
         self.mask = torch.ones_like(self.op.weight)
         self.function = nn.functional.conv2d
+        self.scale = 1.0
     
     def copy_S(self):
         new = SConv2d(self.op.in_channels, self.op.out_channels, self.op.kernel_size, self.op.stride, self.op.padding, self.op.dilation, self.op.groups, False if self.op.bias is None else True, self.op.padding_mode)
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, x):
-        x = self.function(x, self.op.weight + self.noise, self.op.bias, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        x = self.function(x, self.op.weight + self.noise, None, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        x = x * self.scale
+        if self.op.bias is not None:
+            x += self.op.bias.reshape(1,-1,1,1).expand_as(x)
         return x
 
 class SReLU(nn.Module):

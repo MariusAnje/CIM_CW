@@ -11,7 +11,7 @@ import resnet
 import qresnet
 import qvgg
 import qdensnet
-from modules import NModel, SModule
+from modules import NModel, SModule, NModule
 from tqdm import tqdm
 import time
 import argparse
@@ -141,6 +141,31 @@ def str2bool(a):
     else:
         raise NotImplementedError(f"{a}")
 
+def attack_wcw(model, val_data):
+    def my_target(x,y):
+        return (y+1)%10
+    max_list = []
+    avg_list = []
+    acc_list = []
+    for _ in range(1):
+        model.clear_noise()
+        model.set_noise(1e-5, 0)
+        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
+        # attacker.set_mode_targeted_random(n_classses=10)
+        # attacker.set_mode_targeted_by_function(my_target)
+        attacker.set_mode_default()
+        attacker(val_data)
+        max_list.append(attacker.noise_max().item())
+        avg_list.append(np.sqrt(attacker.noise_l2().item()))
+        attack_accuracy = CEval()
+        acc_list.append(attack_accuracy)
+    
+    mean_attack = np.mean(acc_list)
+    # print(f"L2 norm: {np.mean(avg_list):.4f}, acc: {mean_attack:.4f}")
+    w = attacker.get_noise()
+    return mean_attack, w
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--train_epoch', action='store', type=int, default=20,
@@ -187,6 +212,8 @@ if __name__ == "__main__":
             help='learning rate for attack')
     parser.add_argument('--attack_method', action='store', default="l2", choices=["max", "l2", "loss"],
             help='method used for attack')
+    parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
+            help='if we should load the attack')
     args = parser.parse_args()
 
     print(args)
@@ -289,28 +316,29 @@ if __name__ == "__main__":
     args.train_var = 0.0
     args.verbose = True
     
-    """
-    model.to_first_only()
-    NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
-    if args.train_var > 0:
-        state_dict = torch.load(f"tmp_best_{header}.pt")
-        model.load_state_dict(state_dict)
-    model.from_first_back_second()
-    torch.save(model.state_dict(), f"saved_B_{header}_{args.train_var}.pt")
-    model.clear_noise()
-    print(f"No mask no noise: {CEval():.4f}")
-    state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt")
-    model.load_state_dict(state_dict)
-    model.clear_mask()
-    performance = NEachEval(args.dev_var, 0.0)
-    print(f"No mask noise acc: {performance:.4f}")
-    """
+    # model.to_first_only()
+    # NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
+    # if args.train_var > 0:
+    #     state_dict = torch.load(f"tmp_best_{header}.pt")
+    #     model.load_state_dict(state_dict)
+    # model.from_first_back_second()
+    # torch.save(model.state_dict(), f"saved_B_{header}_{args.train_var}.pt")
+    # model.clear_noise()
+    # print(f"No mask no noise: {CEval():.4f}")
+    # state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt")
+    # model.load_state_dict(state_dict)
+    # model.clear_mask()
+    # performance = NEachEval(args.dev_var, 0.0)
+    # print(f"No mask noise acc: {performance:.4f}")
+    # exit()
+
     parent_path = args.model_path
     args.train_var = 0.0
     header = 1
     model.from_first_back_second()
     state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
     model.load_state_dict(state_dict)
+    model.normalize()
     model.clear_mask()
     model.clear_noise()
     # model.to_first_only()
@@ -322,26 +350,66 @@ if __name__ == "__main__":
         pass
     # def my_target(x,y):
     #     return (y+1)%10
+    
+    model.to_first_only()
+    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2", verbose=True)
+    # exit()
+
+    # j = 0
+    # for _ in range(10000):
+    # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
+    #     acc, w = attack_wcw(model, testloader)
+    #     if acc < 0.01:
+    #         print("Success, saving!")
+    #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
+    #         j += 1
+    #     if j >= 10:
+    #         break
+    # exit()
+
+    # parent_dir = "./results/many_noise"
+    # parent_dir = "./results/many_noise/LeNet_norm"
+    parent_dir = "./results/many_noise/MLP3"
+    file_list = os.listdir(parent_dir)
+    if args.load_atk:
+        noise = torch.load(os.path.join(parent_dir, file_list[0]), map_location=device)
+        i = 0
+        for m in model.modules():
+            if isinstance(m, NModule) or isinstance(m, SModule) :
+                # m.noise.data += noise[i].data
+                # m.noise = m.noise.to(device)
+                m.op.weight.data += noise[i].data
+                m.op.weight = m.op.weight.to(device)
+                i += 1
+    print(f"Attack central acc: {CEval():.4f}")
+
     noise_size = 0
     for m in model.modules():
-        if isinstance(m, SModule):
+        if isinstance(m, SModule) or isinstance(m, NModule):
             noise_size += m.op.weight.shape.numel()
     total_noise = torch.randn(args.noise_epoch, noise_size)
-    scale = (total_noise ** 2).sum(dim=-1).sqrt().reshape(len(total_noise),1)
+    total_noise = total_noise * total_noise.abs()
+    scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
     total_noise /= scale
+    model.to_first_only()
 
     max_list = []
     avg_list = []
     acc_list = []
     l2 = args.alpha
+
+    # for i in tqdm(range(len(total_noise))):
     for i in range(len(total_noise)):
         left = 0
         model.clear_noise()
+        # model.set_noise(l2, 0.0)
         for m in model.modules():
-            if isinstance(m, SModule):
+            if isinstance(m, SModule) or isinstance(m, NModule):
                 this_size = m.op.weight.shape.numel()
-                m.noise.data = total_noise[i, left:left+this_size].reshape(m.noise.shape) * l2
+                m.noise.data = (total_noise[i, left:left+this_size].reshape(m.noise.shape) * l2).to(device)
+                # m.noise = m.noise.to(device)
                 left += this_size
         acc = CEval()
         acc_list.append(acc)
+        # print(f"This acc: {acc:.4f}")
     print(f"L2: {l2:.1e}, Mean: {np.mean(acc_list):.4f}, Max: {np.max(acc_list):.4f}, Min: {np.min(acc_list):.4f}")
