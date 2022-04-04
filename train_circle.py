@@ -141,7 +141,7 @@ def str2bool(a):
     else:
         raise NotImplementedError(f"{a}")
 
-def attack_wcw(model, val_data):
+def attack_wcw(model, val_data, verbose=False):
     def my_target(x,y):
         return (y+1)%10
     max_list = []
@@ -161,7 +161,8 @@ def attack_wcw(model, val_data):
         acc_list.append(attack_accuracy)
     
     mean_attack = np.mean(acc_list)
-    # print(f"L2 norm: {np.mean(avg_list):.4f}, acc: {mean_attack:.4f}")
+    if verbose:
+        print(f"L2 norm: {np.mean(avg_list):.4f}, max: {np.mean(max_list):.4f}, acc: {mean_attack:.4f}")
     w = attacker.get_noise()
     return mean_attack, w
 
@@ -317,6 +318,7 @@ if __name__ == "__main__":
     args.verbose = True
     
     # model.to_first_only()
+    # print(model.fc1.op.weight.shape)
     # NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
     # if args.train_var > 0:
     #     state_dict = torch.load(f"tmp_best_{header}.pt")
@@ -348,17 +350,17 @@ if __name__ == "__main__":
         print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     except:
         pass
+    model.to_first_only()
     # def my_target(x,y):
     #     return (y+1)%10
     
-    model.to_first_only()
     # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2", verbose=True)
     # exit()
 
     # j = 0
     # for _ in range(10000):
     # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
-    #     acc, w = attack_wcw(model, testloader)
+    #     acc, w = attack_wcw(model, testloader, True)
     #     if acc < 0.01:
     #         print("Success, saving!")
     #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
@@ -369,7 +371,7 @@ if __name__ == "__main__":
 
     # parent_dir = "./results/many_noise"
     # parent_dir = "./results/many_noise/LeNet_norm"
-    parent_dir = "./results/many_noise/MLP3"
+    parent_dir = "./pretrained/many_noise/MLP3"
     file_list = os.listdir(parent_dir)
     if args.load_atk:
         noise = torch.load(os.path.join(parent_dir, file_list[0]), map_location=device)
@@ -409,6 +411,7 @@ if __name__ == "__main__":
                 m.noise.data = (total_noise[i, left:left+this_size].reshape(m.noise.shape) * l2).to(device)
                 # m.noise = m.noise.to(device)
                 left += this_size
+        atk = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
         acc = CEval()
         acc_list.append(acc)
         # print(f"This acc: {acc:.4f}")

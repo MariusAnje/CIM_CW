@@ -45,9 +45,10 @@ class Model(nn.Module):
 class SMLP3(SModel):
     def __init__(self):
         super().__init__()
-        self.fc1 = SLinear(28*28,32)
-        self.fc2 = SLinear(32,32)
-        self.fc3 = SLinear(32,10)
+        hidden = 8
+        self.fc1 = SLinear(28*28, hidden)
+        self.fc2 = SLinear(hidden,hidden)
+        self.fc3 = SLinear(hidden,10)
         self.relu = SReLU()
     
     def forward(self, x):
