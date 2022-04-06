@@ -185,7 +185,7 @@ if __name__ == "__main__":
             help='device used')
     parser.add_argument('--verbose', action='store', type=str2bool, default=False,
             help='see training process')
-    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG"],
+    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP3_2", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG"],
             help='model to use')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
@@ -277,6 +277,8 @@ if __name__ == "__main__":
 
     if args.model == "MLP3":
         model = SMLP3()
+    elif args.model == "MLP3_2":
+        model = SMLP3()
     elif args.model == "MLP4":
         model = SMLP4()
     elif args.model == "LeNet":
@@ -340,39 +342,42 @@ if __name__ == "__main__":
     model.from_first_back_second()
     state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
     model.load_state_dict(state_dict)
+    if args.model == "MLP3_2":
+        model.fc1 = model.fc1.op
     model.normalize()
     model.clear_mask()
     model.clear_noise()
-    # model.to_first_only()
+    model.to_first_only()
     print(f"No mask no noise: {CEval():.4f}")
     try:
         no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
         print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     except:
         pass
-    model.to_first_only()
+
     # def my_target(x,y):
     #     return (y+1)%10
     
-    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2", verbose=True)
-    # exit()
+    binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method="l2", verbose=True)
+    exit()
 
-    # j = 0
-    # for _ in range(10000):
-    # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
-    #     acc, w = attack_wcw(model, testloader, True)
-    #     if acc < 0.01:
-    #         print("Success, saving!")
-    #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
-    #         j += 1
-    #     if j >= 10:
-    #         break
-    # exit()
+    j = 0
+    for _ in range(10000):
+    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
+        acc, w = attack_wcw(model, testloader, True)
+        if acc < 0.01:
+            print("Success, saving!")
+            # torch.save(w, f"noise_{args.model}_{time.time()}.pt")
+            j += 1
+        if j >= 10:
+            break
+    exit()
 
-    # parent_dir = "./results/many_noise"
-    # parent_dir = "./results/many_noise/LeNet_norm"
-    parent_dir = "./pretrained/many_noise/MLP3"
+    parent_dir = "./pretrained/many_noise/QLeNet"
+    # parent_dir = "./pretrained/many_noise/LeNet_norm"
+    # parent_dir = "./pretrained/many_noise/MLP3"
     file_list = os.listdir(parent_dir)
+    w = []
     if args.load_atk:
         noise = torch.load(os.path.join(parent_dir, file_list[0]), map_location=device)
         i = 0
@@ -382,15 +387,30 @@ if __name__ == "__main__":
                 # m.noise = m.noise.to(device)
                 m.op.weight.data += noise[i].data
                 m.op.weight = m.op.weight.to(device)
+                w += noise[i].data.view(-1).numpy().tolist()
                 i += 1
+
+    # th = 0.02
+    # mask = noise[0].abs()>th
+    # print(mask.sum()/mask.shape.numel())
+    # model.fc1.op.weight.data[mask] = state_dict["fc1.op.weight"][mask]
+    # model.conv1.op.weight.data = state_dict["conv1.op.weight"]
+    # model.conv2.op.weight.data = state_dict["conv2.op.weight"]
+    # model.fc1.op.weight.data = state_dict["fc1.op.weight"]
+    # model.fc2.op.weight.data = state_dict["fc2.op.weight"]
+    # model.fc3.op.weight.data = state_dict["fc3.op.weight"]
     print(f"Attack central acc: {CEval():.4f}")
+    # exit()
 
     noise_size = 0
     for m in model.modules():
         if isinstance(m, SModule) or isinstance(m, NModule):
             noise_size += m.op.weight.shape.numel()
+    w = torch.Tensor(w).to(torch.float32).reshape(1,-1) * -1
+    print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
     total_noise = torch.randn(args.noise_epoch, noise_size)
-    total_noise = total_noise * total_noise.abs()
+    total_noise = torch.cat([total_noise, w])
+    # total_noise = total_noise * total_noise.abs()
     scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
     total_noise /= scale
     model.to_first_only()
