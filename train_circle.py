@@ -369,12 +369,14 @@ if __name__ == "__main__":
     #         break
     # exit()
 
-    # parent_dir = "./results/many_noise"
-    # parent_dir = "./results/many_noise/LeNet_norm"
-    parent_dir = "./pretrained/many_noise/MLP3"
+    parent_dir = "./pretrained/many_noise/QLeNet"
+    # parent_dir = "./pretrained/many_noise/LeNet_norm"
+    # parent_dir = "./pretrained/many_noise/MLP3"
     file_list = os.listdir(parent_dir)
+    total = 0
+    size = 0
     if args.load_atk:
-        noise = torch.load(os.path.join(parent_dir, file_list[0]), map_location=device)
+        noise = torch.load(os.path.join(parent_dir, file_list[1]), map_location=device)
         i = 0
         for m in model.modules():
             if isinstance(m, NModule) or isinstance(m, SModule) :
@@ -382,7 +384,10 @@ if __name__ == "__main__":
                 # m.noise = m.noise.to(device)
                 m.op.weight.data += noise[i].data
                 m.op.weight = m.op.weight.to(device)
+                total += noise[i].data.pow(2).sum().item()
+                size += noise[i].data.shape.numel()
                 i += 1
+    print(np.sqrt(total/size))
     print(f"Attack central acc: {CEval():.4f}")
 
     noise_size = 0
