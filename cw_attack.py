@@ -468,13 +468,28 @@ class WCW(Attack):
         return w
     
     def noise_l2(self):
-        size = 0
-        w = 0
+        # size = 0
+        # w = 0
+        # for m in self.model.modules():
+        #     if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+        #         w += m.noise.pow(2).sum()
+        #         size += len(m.noise.view(-1))
+        # return (w / size).sqrt()
+
+        w = torch.Tensor([])
         for m in self.model.modules():
             if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
-                w += m.noise.pow(2).sum()
-                size += len(m.noise.view(-1))
-        return w / size
+                w = torch.cat([w, m.noise.view(-1)])
+        # return w.norm(2) / len(w)
+        return torch.linalg.norm(w, 2) / len(w)
+    
+    def noise_linf(self):
+        w = torch.Tensor([])
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                w = torch.cat([w, m.noise.view(-1)])
+        # return w.norm(16) / len(w)
+        return torch.linalg.norm(w, torch.inf) / len(w)
     
     def noise_max(self):
         w = None
@@ -550,6 +565,8 @@ class WCW(Attack):
 
                 if method == "l2":
                     metric = self.noise_l2()
+                elif method == "linf":
+                    metric = self.noise_linf()
                 elif method == "max":
                     metric = self.noise_max()
                 elif method == "loss":
