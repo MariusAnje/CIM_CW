@@ -379,7 +379,7 @@ if __name__ == "__main__":
     file_list = os.listdir(parent_dir)
     w = []
     if args.load_atk:
-        noise = torch.load(os.path.join(parent_dir, file_list[0]), map_location=device)
+        noise = torch.load(os.path.join(parent_dir, file_list[1]), map_location=device)
         i = 0
         for m in model.modules():
             if isinstance(m, NModule) or isinstance(m, SModule) :
