@@ -215,6 +215,8 @@ if __name__ == "__main__":
             help='method used for attack')
     parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
             help='if we should load the attack')
+    parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
+            help='if we should load the noise directions')
     args = parser.parse_args()
 
     print(args)
@@ -378,7 +380,7 @@ if __name__ == "__main__":
     # parent_dir = "./pretrained/many_noise/MLP3"
     parent_dir = "./pretrained/many_noise/MLP3_2"
     file_list = os.listdir(parent_dir)
-    w = []
+    # w = []
     if args.load_atk:
         noise = torch.load(os.path.join(parent_dir, file_list[1]), map_location=device)
         i = 0
@@ -388,7 +390,7 @@ if __name__ == "__main__":
                 # m.noise = m.noise.to(device)
                 m.op.weight.data += noise[i].data
                 m.op.weight = m.op.weight.to(device)
-                w += noise[i].data.view(-1).numpy().tolist()
+                # w += noise[i].data.view(-1).numpy().tolist()
                 i += 1
 
     # th = 0.02
@@ -407,15 +409,23 @@ if __name__ == "__main__":
     for m in model.modules():
         if isinstance(m, SModule) or isinstance(m, NModule):
             noise_size += m.op.weight.shape.numel()
-    total_noise = torch.randn(args.noise_epoch, noise_size)
     
-    # w = torch.Tensor(w).to(torch.float32).reshape(1,-1) * -1
-    # print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
-    # total_noise = torch.cat([total_noise, w])
-    
-    # total_noise = total_noise * total_noise.abs()
-    scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
-    total_noise /= scale
+    if not args.load_direction:
+        total_noise = torch.randn(args.noise_epoch, noise_size)
+        
+        # w = torch.Tensor(w).to(torch.float32).reshape(1,-1) * -1
+        # print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
+        # total_noise = torch.cat([total_noise, w])
+        
+        # total_noise = total_noise * total_noise.abs()
+        scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
+        total_noise /= scale
+    else:
+        total_noise = torch.load(f"pretrained/{args.model}/directions.pt")
+        if len(total_noise) < args.noise_epoch:
+            raise Exception("Saved direction not enough")
+        else:
+            total_noise = total_noise[:args.noise_epoch]
     model.to_first_only()
 
     max_list = []
@@ -432,8 +442,8 @@ if __name__ == "__main__":
     testloader = new_loader
     model.fc1 = nn.Identity()
 
-    for i in tqdm(range(len(total_noise))):
-    # for i in range(len(total_noise)):
+    # for i in tqdm(range(len(total_noise))):
+    for i in range(len(total_noise)):
         left = 0
         model.clear_noise()
         # model.set_noise(l2, 0.0)
