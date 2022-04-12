@@ -4,7 +4,7 @@ import torchvision
 from torch import optim
 import torchvision.transforms as transforms
 import numpy as np
-from models import SCrossEntropyLoss, SMLP3, SMLP4, SLeNet, CIFAR, FakeSCrossEntropyLoss
+from models import SCrossEntropyLoss, SMLP3, SMLP4, SLeNet, CIFAR, FakeSCrossEntropyLoss, SAdvNet
 import modules
 from qmodels import QSLeNet, QCIFAR
 import resnet
@@ -185,7 +185,7 @@ if __name__ == "__main__":
             help='device used')
     parser.add_argument('--verbose', action='store', type=str2bool, default=False,
             help='see training process')
-    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP3_2", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG"],
+    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP3_2", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG", "Adv"],
             help='model to use')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
@@ -303,6 +303,8 @@ if __name__ == "__main__":
         model = qresnet.resnet18(num_classes = 200)
     elif args.model == "QVGG":
         model = qvgg.vgg11(num_classes = 200)
+    elif args.model == "Adv":
+        model = SAdvNet()
     else:
         NotImplementedError
 
@@ -343,10 +345,16 @@ if __name__ == "__main__":
     header = 1
     model.from_first_back_second()
     state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
-    model.load_state_dict(state_dict)
+    if args.model == "Adv":
+        model.conv1.op.weight.data, model.conv1.op.bias.data = state_dict["conv1.weight"].data, state_dict["conv1.bias"].data
+        model.conv2.op.weight.data, model.conv2.op.bias.data = state_dict["conv2.weight"].data, state_dict["conv2.bias"].data
+        model.fc1.op.weight.data, model.fc1.op.bias.data = state_dict["fc1.weight"].data, state_dict["fc1.bias"].data
+        model.fc2.op.weight.data, model.fc2.op.bias.data = state_dict["fc2.weight"].data, state_dict["fc2.bias"].data
+    else:
+        model.load_state_dict(state_dict)
     if args.model == "MLP3_2":
         model.fc1 = model.fc1.op
-    model.normalize()
+    # model.normalize()
     model.clear_mask()
     model.clear_noise()
     model.to_first_only()
@@ -356,6 +364,8 @@ if __name__ == "__main__":
         print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     except:
         pass
+    
+    exit()
 
     # def my_target(x,y):
     #     return (y+1)%10
