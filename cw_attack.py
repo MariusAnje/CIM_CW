@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.optim as optim
 import modules
 from tqdm import tqdm
+import numpy as np
 
 """
     Adapted from other github repos, link shown below
@@ -481,7 +482,7 @@ class WCW(Attack):
             if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
                 w = torch.cat([w, m.noise.view(-1)])
         # return w.norm(2) / len(w)
-        return torch.linalg.norm(w, 2) / len(w)
+        return torch.linalg.norm(w, 2) / np.sqrt(len(w))
     
     def noise_linf(self):
         w = torch.Tensor([])
@@ -608,7 +609,7 @@ class WCW(Attack):
 def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacker_class, model, init_c, steps, lr, method="l2", verbose=True):
     last_bad_c = 0
     final_accuracy = 0.0
-    final_c = 1
+    final_c = init_c
     final_max = None
     final_l2 = None
     for _ in range(search_runs):

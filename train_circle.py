@@ -156,7 +156,7 @@ def attack_wcw(model, val_data, verbose=False):
         attacker.set_mode_default()
         attacker(val_data)
         max_list.append(attacker.noise_max().item())
-        avg_list.append(np.sqrt(attacker.noise_l2().item()))
+        avg_list.append(attacker.noise_l2().item())
         attack_accuracy = CEval()
         acc_list.append(attack_accuracy)
     
@@ -363,24 +363,24 @@ if __name__ == "__main__":
     # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
     # exit()
 
-    # j = 0
-    # for _ in range(10000):
-    # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
-    #     acc, w = attack_wcw(model, testloader, True)
-    #     if acc < 0.01:
-    #         print("Success, saving!")
-    #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
-    #         j += 1
-    #     if j >= 10:
-    #         break
-    # exit()
+    j = 0
+    for _ in range(10000):
+    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
+        acc, w = attack_wcw(model, testloader, True)
+        if acc < 0.01:
+            print("Success, saving!")
+            torch.save(w, f"noise_{args.model}_{time.time()}.pt")
+            j += 1
+        if j >= 3:
+            break
+    exit()
 
     # parent_dir = "./pretrained/many_noise/QLeNet"
     # parent_dir = "./pretrained/many_noise/LeNet_norm"
     # parent_dir = "./pretrained/many_noise/MLP3"
     parent_dir = "./pretrained/many_noise/MLP3_2"
     file_list = os.listdir(parent_dir)
-    # w = []
+    w = torch.Tensor([]).to(device)
     if args.load_atk:
         noise = torch.load(os.path.join(parent_dir, file_list[1]), map_location=device)
         i = 0
@@ -390,7 +390,7 @@ if __name__ == "__main__":
                 # m.noise = m.noise.to(device)
                 m.op.weight.data += noise[i].data
                 m.op.weight = m.op.weight.to(device)
-                # w += noise[i].data.view(-1).numpy().tolist()
+                w = torch.cat([w, noise[i].data.view(-1)])
                 i += 1
 
     # th = 0.02
@@ -413,9 +413,9 @@ if __name__ == "__main__":
     if not args.load_direction:
         total_noise = torch.randn(args.noise_epoch, noise_size)
         
-        # w = torch.Tensor(w).to(torch.float32).reshape(1,-1) * -1
+        w = w.reshape(1,-1) * -1
         # print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
-        # total_noise = torch.cat([total_noise, w])
+        total_noise = torch.cat([total_noise, w])
         
         # total_noise = total_noise * total_noise.abs()
         scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
