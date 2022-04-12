@@ -458,3 +458,4 @@ if __name__ == "__main__":
         acc_list.append(acc)
         # print(f"This acc: {acc:.4f}")
     print(f"L2: {l2:.1e}, Mean: {np.mean(acc_list):.4f}, Max: {np.max(acc_list):.4f}, Min: {np.min(acc_list):.4f}")
+    torch.save(acc_list, f"Circle_acc_list_{l2:.1e}.pt")
