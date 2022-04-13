@@ -364,8 +364,6 @@ if __name__ == "__main__":
         print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     except:
         pass
-    
-    exit()
 
     # def my_target(x,y):
     #     return (y+1)%10
@@ -373,17 +371,17 @@ if __name__ == "__main__":
     # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
     # exit()
 
-    j = 0
-    for _ in range(10000):
-    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
-        acc, w = attack_wcw(model, testloader, True)
-        if acc < 0.01:
-            print("Success, saving!")
-            torch.save(w, f"noise_{args.model}_{time.time()}.pt")
-            j += 1
-        if j >= 3:
-            break
-    exit()
+    # j = 0
+    # for _ in range(10000):
+    # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
+    #     acc, w = attack_wcw(model, testloader, True)
+    #     if acc < 0.01:
+    #         print("Success, saving!")
+    #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
+    #         j += 1
+    #     if j >= 3:
+    #         break
+    # exit()
 
     # parent_dir = "./pretrained/many_noise/QLeNet"
     # parent_dir = "./pretrained/many_noise/LeNet_norm"

@@ -468,6 +468,17 @@ class WCW(Attack):
                 w.append(m.noise)
         return w
     
+    def collect_noise_tensor(self):
+        flag = True
+        for m in self.model.modules():
+            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                if flag:
+                    w = m.noise.view(-1)
+                    flag = False
+                else:
+                    w = torch.cat([w, m.noise.view(-1)])
+        return w
+    
     def noise_l2(self):
         # size = 0
         # w = 0
@@ -477,29 +488,18 @@ class WCW(Attack):
         #         size += len(m.noise.view(-1))
         # return (w / size).sqrt()
 
-        w = torch.Tensor([])
-        for m in self.model.modules():
-            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
-                w = torch.cat([w, m.noise.view(-1)])
+        w = self.collect_noise_tensor()
         # return w.norm(2) / len(w)
         return torch.linalg.norm(w, 2) / np.sqrt(len(w))
     
     def noise_linf(self):
-        w = torch.Tensor([])
-        for m in self.model.modules():
-            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
-                w = torch.cat([w, m.noise.view(-1)])
+
+        w = self.collect_noise_tensor()
         # return w.norm(16) / len(w)
-        return torch.linalg.norm(w, torch.inf) / len(w)
+        return torch.linalg.norm(w, torch.inf)
     
     def noise_max(self):
-        w = None
-        for m in self.model.modules():
-            if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
-                if w is None:
-                    w = m.noise.view(-1)
-                else:
-                    w = torch.cat([w, m.noise.view(-1)])
+        w = self.collect_noise_tensor()
         return w.abs().max()
     
     def collect_loss_ori(self, testloader):
