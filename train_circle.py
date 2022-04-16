@@ -271,8 +271,6 @@ if __name__ == "__main__":
             transforms.RandomResizedCrop(224),
             transforms.RandomHorizontalFlip(),
         ]
-        if args.color_jitter:
-            pre_process += [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]
         pre_process += [
             transforms.ToTensor(),
             normalize
