@@ -1,4 +1,5 @@
 from cProfile import label
+from sklearn.utils import shuffle
 import torch
 import torchvision
 from torch import optim
@@ -11,6 +12,7 @@ import resnet
 import qresnet
 import qvgg
 import qdensnet
+import qresnetIN
 from modules import NModel, SModule, NModule
 from tqdm import tqdm
 import time
@@ -263,6 +265,33 @@ if __name__ == "__main__":
         secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=8)
         testset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/val',  transform=transform)
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=8)
+    elif args.model == "QVGGIN" or args.model == "QResIN":
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        pre_process = [
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+        ]
+        if args.color_jitter:
+            pre_process += [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]
+        pre_process += [
+            transforms.ToTensor(),
+            normalize
+        ]
+
+        trainset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/train',
+                                transform=transforms.Compose(pre_process))
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
+                                                shuffle=True, num_workers=2)
+
+        testset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/val',
+                                transform=transforms.Compose([
+                                    transforms.Resize(256),
+                                    transforms.CenterCrop(224),
+                                    transforms.ToTensor(),
+                                    normalize
+                                ]))
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
+                                                    shuffle=False, num_workers=4)
     else:
         trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
                                                 download=False, transform=transforms.ToTensor())
@@ -305,6 +334,10 @@ if __name__ == "__main__":
         model = qvgg.vgg16(num_classes = 1000)
     elif args.model == "Adv":
         model = SAdvNet()
+    elif args.model == "QVGGIN":
+        model = qvgg.vgg16(num_classes = 1000)
+    elif args.model == "QResIN":
+        model = qresnetIN.resnet18(num_classes = 1000)
     else:
         NotImplementedError
 
