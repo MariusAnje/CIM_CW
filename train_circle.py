@@ -302,7 +302,7 @@ if __name__ == "__main__":
     elif args.model == "QTIN":
         model = qresnet.resnet18(num_classes = 200)
     elif args.model == "QVGG":
-        model = qvgg.vgg11(num_classes = 200)
+        model = qvgg.vgg16(num_classes = 1000)
     elif args.model == "Adv":
         model = SAdvNet()
     else:
