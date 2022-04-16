@@ -638,7 +638,7 @@ class SModel(nn.Module):
     def normalize(self):
         for mo in self.modules():
             # if isinstance(mo, SLinear) or isinstance(mo, SConv2d):
-            if isinstance(mo, SModule):
+            if isinstance(mo, SModule) or isinstance(mo, NModule):
                 mo.normalize()
 
     def get_scale(self):
@@ -651,7 +651,7 @@ class SModel(nn.Module):
     def de_normalize(self):
         for mo in self.modules():
             # if isinstance(mo, SLinear) or isinstance(mo, SConv2d):
-            if isinstance(mo, SModule):
+            if isinstance(mo, SModule) or isinstance(mo, NModule):
                 if mo.original_w is None:
                     raise Exception("no original weight")
                 else:
