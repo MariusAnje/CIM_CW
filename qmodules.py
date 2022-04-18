@@ -19,6 +19,7 @@ class QSLinear(SModule):
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, xC):
@@ -43,6 +44,7 @@ class QSConv2d(SModule):
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, xC):
@@ -63,16 +65,23 @@ class QNLinear(NModule):
         self.mask = torch.ones_like(self.op.weight)
         self.function = nn.functional.linear
         self.N = N
+        self.scale = 1.0
 
     def copy_S(self):
         new = QSLinear(self.N, self.op.in_features, self.op.out_features, False if self.op.bias is None else True)
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def forward(self, x):
-        x = self.function(x, quant(self.N, self.op.weight) + self.noise, quant(self.N, self.op.bias))
+        x = x = self.function(x, quant(self.N,self.op.weight) + self.noise, None)
+        x = x * self.scale
+        if self.op.bias is not None:
+            x += self.op.bias
+        # x = self.function(x, (quant(self.N, self.op.weight) + self.noise)  * self.scale , quant(self.N, self.op.bias))
+
         return quant(self.N, x)
 
 class QNConv2d(NModule):
@@ -83,12 +92,14 @@ class QNConv2d(NModule):
         self.mask = torch.ones_like(self.op.weight)
         self.function = nn.functional.conv2d
         self.N = N
+        self.scale = 1.0
     
     def copy_S(self):
         new = QSConv2d(self.N, self.op.in_channels, self.op.out_channels, self.op.kernel_size, self.op.stride, self.op.padding, self.op.dilation, self.op.groups, False if self.op.bias is None else True, self.op.padding_mode)
         new.op = self.op
         new.noise = self.noise
         new.mask = self.mask
+        new.scale = self.scale
         return new
 
     def init_weights(self):
@@ -99,6 +110,7 @@ class QNConv2d(NModule):
 
     def forward(self, x):
         x = self.function(x, quant(self.N, self.op.weight) + self.noise, None, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
+        x = x * self.scale
         if self.op.bias is not None:
             x += quant(self.N, self.op.bias).reshape(1,-1,1,1).expand_as(x)
         return quant(self.N, x)

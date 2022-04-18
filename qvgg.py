@@ -32,7 +32,7 @@ class VGG(SModel):
         features,
         num_classes: int = 1000,
         init_weights: bool = True,
-        N = 6
+        N = 8
     ) -> None:
         super(VGG, self).__init__()
         self.features = features
@@ -40,10 +40,10 @@ class VGG(SModel):
         self.classifier = nn.Sequential(
             QSLinear(N, 512 * 7 * 7, 4096),
             SReLU(),
-            # nn.Dropout(),
+            SReLU(),
             QSLinear(N, 4096, 4096),
             SReLU(),
-            # nn.Dropout(),
+            SReLU(),
             QSLinear(N, 4096, num_classes),
         )
         if init_weights:
@@ -135,3 +135,26 @@ def vgg11_bn(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
     """
     return _vgg('vgg11_bn', 'A', True, pretrained, progress, **kwargs)
 
+def vgg16(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> VGG:
+    r"""VGG 16-layer model (configuration "D")
+    `"Very Deep Convolutional Networks For Large-Scale Image Recognition" <https://arxiv.org/pdf/1409.1556.pdf>`_.
+    The required minimum input size of the model is 32x32.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _vgg("vgg16", "D", False, pretrained, progress, **kwargs)
+
+
+
+def vgg16_bn(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> VGG:
+    r"""VGG 16-layer model (configuration "D") with batch normalization
+    `"Very Deep Convolutional Networks For Large-Scale Image Recognition" <https://arxiv.org/pdf/1409.1556.pdf>`_.
+    The required minimum input size of the model is 32x32.
+
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _vgg("vgg16_bn", "D", True, pretrained, progress, **kwargs)

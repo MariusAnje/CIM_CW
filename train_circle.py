@@ -1,4 +1,5 @@
 from cProfile import label
+from sklearn.utils import shuffle
 import torch
 import torchvision
 from torch import optim
@@ -11,12 +12,13 @@ import resnet
 import qresnet
 import qvgg
 import qdensnet
+import qresnetIN
 from modules import NModel, SModule, NModule
 from tqdm import tqdm
 import time
 import argparse
 import os
-from cw_attack import Attack, WCW, binary_search_c
+from cw_attack import Attack, WCW, binary_search_c, binary_search_dist
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -185,7 +187,7 @@ if __name__ == "__main__":
             help='device used')
     parser.add_argument('--verbose', action='store', type=str2bool, default=False,
             help='see training process')
-    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP3_2", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG", "Adv"],
+    parser.add_argument('--model', action='store', default="MLP4", choices=["MLP3", "MLP3_2", "MLP4", "LeNet", "CIFAR", "Res18", "TIN", "QLeNet", "QCIFAR", "QRes18", "QDENSE", "QTIN", "QVGG", "Adv", "QVGGIN", "QResIN"],
             help='model to use')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
@@ -263,6 +265,31 @@ if __name__ == "__main__":
         secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=8)
         testset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/val',  transform=transform)
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=8)
+    elif args.model == "QVGGIN" or args.model == "QResIN":
+        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        pre_process = [
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+        ]
+        pre_process += [
+            transforms.ToTensor(),
+            normalize
+        ]
+
+        trainset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/train',
+                                transform=transforms.Compose(pre_process))
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
+                                                shuffle=True, num_workers=2)
+
+        testset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/val',
+                                transform=transforms.Compose([
+                                    transforms.Resize(256),
+                                    transforms.CenterCrop(224),
+                                    transforms.ToTensor(),
+                                    normalize
+                                ]))
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
+                                                    shuffle=False, num_workers=4)
     else:
         trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
                                                 download=False, transform=transforms.ToTensor())
@@ -302,9 +329,13 @@ if __name__ == "__main__":
     elif args.model == "QTIN":
         model = qresnet.resnet18(num_classes = 200)
     elif args.model == "QVGG":
-        model = qvgg.vgg11(num_classes = 200)
+        model = qvgg.vgg16(num_classes = 1000)
     elif args.model == "Adv":
         model = SAdvNet()
+    elif args.model == "QVGGIN":
+        model = qvgg.vgg16(num_classes = 1000)
+    elif args.model == "QResIN":
+        model = qresnetIN.resnet18(num_classes = 1000)
     else:
         NotImplementedError
 
@@ -342,7 +373,7 @@ if __name__ == "__main__":
 
     parent_path = args.model_path
     args.train_var = 0.0
-    header = 1
+    header = args.header
     model.from_first_back_second()
     state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
     if args.model == "Adv":
@@ -354,7 +385,7 @@ if __name__ == "__main__":
         model.load_state_dict(state_dict)
     if args.model == "MLP3_2":
         model.fc1 = model.fc1.op
-    # model.normalize()
+    model.normalize()
     model.clear_mask()
     model.clear_noise()
     model.to_first_only()
@@ -368,8 +399,15 @@ if __name__ == "__main__":
     # def my_target(x,y):
     #     return (y+1)%10
     
-    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
-    # exit()
+    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.15, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
+    binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=0.03, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
+    # target max: 0.03, header = 2
+    # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
+    # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4
+    # Model: QRes18 acc:0.0000, c = 10, dist = 0.0111, lr = 5e-5
+    # Model: QTIN   acc:0.0000, c = 1,  dist = 0.0059, lr = 1e-4
+    # Model: QVGGIN acc:0.0008, c = 1,  dist = 0.0273, lr = 1e-4
+    exit()
 
     # j = 0
     # for _ in range(10000):
