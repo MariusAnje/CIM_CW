@@ -16,7 +16,7 @@ from tqdm import tqdm
 import time
 import argparse
 import os
-from cw_attack import Attack, WCW, binary_search_c, RWCW
+from cw_attack import Attack, WCW, binary_search_c_r, RWCW
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -150,7 +150,7 @@ def attack_wcw(model, val_data, verbose=False):
     for _ in range(1):
         model.clear_noise()
         model.set_noise(1e-5, 0)
-        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
+        attacker = RWCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
@@ -368,8 +368,8 @@ if __name__ == "__main__":
     # def my_target(x,y):
     #     return (y+1)%10
     
-    attack_wcw(model, testloader, True)
-    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
+    # attack_wcw(model, testloader, True)
+    binary_search_c_r(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.01, attacker_class=RWCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
     exit()
 
     # j = 0

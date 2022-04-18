@@ -639,6 +639,39 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
                 init_c = (init_c + last_bad_c) / 2
     return final_accuracy, final_max, final_l2, final_c
 
+def binary_search_c_r(search_runs, acc_evaluator, dataloader, th_accuracy, attacker_class, model, init_c, steps, lr, method="l2", verbose=True):
+    last_bad_c = 0
+    final_accuracy = 0.0
+    final_c = init_c
+    final_max = None
+    final_l2 = None
+    for _ in range(search_runs):
+        model.clear_noise()
+        attacker = attacker_class(model, c=init_c, kappa=0, steps=steps, lr=lr, method=method)
+        # attacker.set_mode_targeted_random(n_classses=10)
+        # attacker.set_mode_targeted_by_function(my_target)
+        attacker.set_mode_default()
+        attacker(dataloader)
+        w = attacker.get_noise()
+        this_max = attacker.noise_max().item()
+        this_l2 = attacker.noise_l2().item()
+        this_accuracy = acc_evaluator().item()
+        if verbose:
+            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+        if this_accuracy < th_accuracy:
+            last_bad_c = init_c
+            init_c = (init_c + final_c) / 2
+        else:
+            final_c   = init_c
+            final_max = this_max
+            final_l2  = this_l2
+            final_accuracy = this_accuracy
+            if last_bad_c == 0:
+                init_c = init_c / 10
+            else:
+                init_c = (init_c + last_bad_c) / 2
+    return final_accuracy, final_max, final_l2, final_c
+
 class RWCW(WCW):
     def __init__(self, model, c=0.0001, kappa=0, steps=1000, lr=0.01, method="l2"):
         super().__init__(model, c, kappa, steps, lr, method)
