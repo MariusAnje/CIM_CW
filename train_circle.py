@@ -406,6 +406,7 @@ if __name__ == "__main__":
     # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4
     # Model: QRes18 acc:0.0000, c = 10, dist = 0.0111, lr = 5e-5
     # Model: QTIN   acc:0.0000, c = 1,  dist = 0.0059, lr = 1e-4
+    # Model: QVGGIN acc:0.0008, c = 1,  dist = 0.0273, lr = 1e-4
     exit()
 
     # j = 0

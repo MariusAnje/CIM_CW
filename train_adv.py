@@ -141,7 +141,7 @@ def ATrain(epochs, header, verbose=False):
         # for images, labels in tqdm(trainloader):
         for images, labels in trainloader:
             model.clear_noise()
-            attacker = WCW(model, c=args.attack_c, kappa=0, steps=10, lr=args.attack_lr, method=args.attack_method)
+            attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
             attacker.set_mode_default()
             attacker([(images, labels)])
             optimizer.zero_grad()
