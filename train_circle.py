@@ -219,6 +219,8 @@ if __name__ == "__main__":
             help='if we should load the attack')
     parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
             help='if we should load the noise directions')
+    parser.add_argument('--use_tqdm', action='store',type=str2bool, default=False,
+            help='whether to use tqdm')
     args = parser.parse_args()
 
     print(args)
@@ -400,7 +402,7 @@ if __name__ == "__main__":
     #     return (y+1)%10
     
     # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.15, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
-    binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=0.03, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
+    binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=0.03, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True, use_tqdm = args.use_tqdm)
     # target max: 0.03, header = 2
     # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
     # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4

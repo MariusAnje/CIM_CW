@@ -535,7 +535,7 @@ class WCW(Attack):
             if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
                 m.noise.grad.data = m.op.weight.grad.data
 
-    def forward(self, testloader):
+    def forward(self, testloader, use_tqdm=False):
         r"""
         Overridden.
         """
@@ -549,8 +549,10 @@ class WCW(Attack):
         if self.method == "loss":
             self.collect_loss_ori(testloader)
 
-        # the_loader = tqdm(range(self.steps))
-        the_loader = range(self.steps)
+        if use_tqdm:
+            the_loader = tqdm(range(self.steps))
+        else:
+            the_loader = range(self.steps)
         for step in the_loader:
             running_cost = 0.0
             running_f = 0.0
@@ -693,7 +695,7 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
         this_l2 = attacker.noise_l2().item()
         this_accuracy = acc_evaluator().item()
         if verbose:
-            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
         if this_accuracy > th_accuracy:
             last_bad_c = init_c
             init_c = (init_c + final_c) / 2
@@ -708,7 +710,7 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
                 init_c = (init_c + last_bad_c) / 2
     return final_accuracy, final_max, final_l2, final_c
 
-def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, attacker_class, model, init_c, steps, lr, method="l2", verbose=True):
+def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, attacker_class, model, init_c, steps, lr, method="l2", verbose=True, use_tqdm=False):
     last_bad_c = 0
     final_accuracy = 0.0
     final_c = init_c
@@ -720,7 +722,7 @@ def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, at
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
-        attacker(dataloader)
+        attacker(dataloader, use_tqdm)
         w = attacker.get_noise()
         this_max = attacker.noise_max().item()
         this_l2 = attacker.noise_l2().item()
