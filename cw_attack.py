@@ -676,6 +676,63 @@ class RWCW(WCW):
         else:
             return torch.clamp((i-j), min=-self.kappa)
 
+class PGD(WCW):
+    def __init__(self, model, c=0.0001, kappa=0, steps=1000, lr=0.01, method="l2"):
+        super().__init__(model, c, kappa, steps, lr, method)
+        self.f = nn.CrossEntropyLoss()
+    
+    def forward(self, testloader, use_tqdm=False):
+        r"""
+        Overridden.
+        """
+        self.model.eval()
+        method = self.method
+        w = self.get_noise()
+
+        # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
+        optimizer = optim.Adam(w, lr=self.lr)
+
+        if self.method == "loss":
+            self.collect_loss_ori(testloader)
+
+        if use_tqdm:
+            the_loader = tqdm(range(self.steps))
+        else:
+            the_loader = range(self.steps)
+        for step in the_loader:
+            running_cost = 0.0
+            running_f = 0.0
+            running_d = 0.0
+            # for i, (images, labels) in enumerate(tqdm(testloader, leave=False)):
+            for i, (images, labels) in enumerate(testloader):
+                images, labels = images.to(self.device), labels.to(self.device)
+                outputs = self.model(images)
+                f_loss = -1. * self.f(outputs, labels)
+
+                if method == "l2":
+                    metric = self.noise_l2()
+                elif method == "linf":
+                    metric = self.noise_linf()
+                elif method == "max":
+                    metric = self.noise_max()
+                elif method == "loss":
+                    metric = self.cal_loss_l2(i, images, labels)
+                else:
+                    raise NotImplementedError
+
+                cost = self.c*f_loss + metric
+                running_cost += cost
+                running_f += f_loss
+                running_d += metric
+                optimizer.zero_grad()
+                cost.backward()
+                # self.copy_grad()
+                optimizer.step()
+            if isinstance(the_loader, tqdm):
+                the_loader.set_description(f"f: {running_f/len(testloader):.4f}, d: {running_d/len(testloader):.4f}")
+    
+        
+
 
 def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacker_class, model, init_c, steps, lr, method="l2", verbose=True):
     last_bad_c = 0
