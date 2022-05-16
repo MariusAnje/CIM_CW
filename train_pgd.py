@@ -400,7 +400,7 @@ if __name__ == "__main__":
     #     return (y+1)%10
     
     attacker = PGD(model, step_size=args.attack_lr, steps=args.attack_runs)
-    attacker(testloader, True)
+    attacker(testloader, args.use_tqdm)
     this_accuracy = CEval()
     this_max = attacker.noise_max().item()
     this_l2 = attacker.noise_l2().item()
