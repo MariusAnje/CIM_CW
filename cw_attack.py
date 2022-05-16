@@ -4,6 +4,8 @@ import torch.optim as optim
 import modules
 from tqdm import tqdm
 import numpy as np
+from modules import NConv2d, NLinear, SConv2d, SLinear, NModule, SModule
+from qmodules import QSConv2d, QSLinear, QNConv2d, QNLinear
 
 """
     Adapted from other github repos, link shown below
@@ -677,8 +679,8 @@ class RWCW(WCW):
             return torch.clamp((i-j), min=-self.kappa)
 
 class PGD(WCW):
-    def __init__(self, model, c=0.0001, kappa=0, steps=1000, lr=0.01, method="l2"):
-        super().__init__(model, c, kappa, steps, lr, method)
+    def __init__(self, model, step_size=0.0001, steps=1000):
+        super().__init__(model, c=0, kappa=0, steps=steps, lr=step_size, method="l2")
         self.f = nn.CrossEntropyLoss()
     
     def forward(self, testloader, use_tqdm=False):
@@ -686,14 +688,9 @@ class PGD(WCW):
         Overridden.
         """
         self.model.eval()
-        method = self.method
-        w = self.get_noise()
 
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
-        optimizer = optim.Adam(w, lr=self.lr)
-
-        if self.method == "loss":
-            self.collect_loss_ori(testloader)
+        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
         if use_tqdm:
             the_loader = tqdm(range(self.steps))
@@ -701,35 +698,22 @@ class PGD(WCW):
             the_loader = range(self.steps)
         for step in the_loader:
             running_cost = 0.0
-            running_f = 0.0
-            running_d = 0.0
             # for i, (images, labels) in enumerate(tqdm(testloader, leave=False)):
             for i, (images, labels) in enumerate(testloader):
                 images, labels = images.to(self.device), labels.to(self.device)
                 outputs = self.model(images)
-                f_loss = -1. * self.f(outputs, labels)
+                cost = self.f(outputs, labels)
+                running_cost += cost.item()
 
-                if method == "l2":
-                    metric = self.noise_l2()
-                elif method == "linf":
-                    metric = self.noise_linf()
-                elif method == "max":
-                    metric = self.noise_max()
-                elif method == "loss":
-                    metric = self.cal_loss_l2(i, images, labels)
-                else:
-                    raise NotImplementedError
-
-                cost = self.c*f_loss + metric
-                running_cost += cost
-                running_f += f_loss
-                running_d += metric
-                optimizer.zero_grad()
+                # optimizer.zero_grad()
                 cost.backward()
-                # self.copy_grad()
-                optimizer.step()
+            for m in self.model.modules():
+                if isinstance(m, NModule) or isinstance(m, SModule):
+                    m.noise.data += m.op.weight.grad.data.sign() * self.lr
+                    
+            optimizer.zero_grad()
             if isinstance(the_loader, tqdm):
-                the_loader.set_description(f"f: {running_f/len(testloader):.4f}, d: {running_d/len(testloader):.4f}")
+                the_loader.set_description(f"f: {running_cost/len(testloader):.4f}")
     
         
 

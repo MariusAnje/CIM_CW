@@ -150,10 +150,48 @@ def ATrain(epochs, header, verbose=False):
             outputs = model(images)
             loss = criteriaF(outputs,labels)
             loss.backward()
+            model.clear_noise()
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
             optimizer.step()
             running_loss += loss.item()
         # test_acc = NEachEval(dev_var, write_var)
         model.clear_noise()
+        test_acc = CEval()
+        if test_acc > best_acc:
+            best_acc = test_acc
+            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
+        if verbose:
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
+        scheduler.step()
+
+def ANTrain(epochs, header, verbose=False):
+    best_acc = 0.0
+    for i in range(epochs):
+        model.train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            model.clear_noise()
+            attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
+            attacker.set_mode_default()
+            attacker([(images, labels)])
+            optimizer.zero_grad()
+            images, labels = images.to(device), labels.to(device)
+            # images = images.view(-1, 784)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            model.clear_noise()
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        # test_acc = NEachEval(dev_var, write_var)
+        model.clear_noise()
+        model.set_noise(0.1,0.0)
         test_acc = CEval()
         if test_acc > best_acc:
             best_acc = test_acc
@@ -350,7 +388,7 @@ if __name__ == "__main__":
 
     
     model.to_first_only()
-    ATrain(args.train_epoch, header, args.verbose)
+    ANTrain(args.train_epoch, header, args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)

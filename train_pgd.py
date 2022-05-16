@@ -403,8 +403,14 @@ if __name__ == "__main__":
     # def my_target(x,y):
     #     return (y+1)%10
     
-    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.15, attacker_class=PGD, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
-    binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=PGD, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True, use_tqdm = args.use_tqdm)
+    attacker = PGD(model, step_size=0.001, steps=30)
+    attacker(testloader, True)
+    this_accuracy = CEval()
+    this_max = attacker.noise_max().item()
+    this_l2 = attacker.noise_l2().item()
+    print(f"acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+
+    # binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=PGD, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True, use_tqdm = args.use_tqdm)
     # target max: 0.03, header = 2
     # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
     # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4
