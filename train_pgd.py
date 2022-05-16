@@ -207,22 +207,18 @@ if __name__ == "__main__":
             help='division points for second')
     parser.add_argument('--layerwise', action='store',type=str2bool, default=False,
             help='if do it layer by layer')
-    parser.add_argument('--attack_c', action='store',type=float, default=1e-4,
-            help='c value for attack')
     parser.add_argument('--attack_runs', action='store',type=int, default=10,
             help='# of runs for attack')
-    parser.add_argument('--attack_lr', action='store',type=float, default=1e-4,
+    parser.add_argument('--attack_lr', action='store',type=float, default=1e-3,
             help='learning rate for attack')
-    parser.add_argument('--attack_method', action='store', default="l2", choices=["max", "l2", "linf", "loss"],
-            help='method used for attack')
-    parser.add_argument('--attack_dist', action='store', type=float, default=0.03,
-            help='distance used for attack')
     parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
             help='if we should load the attack')
     parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
             help='if we should load the noise directions')
     parser.add_argument('--use_tqdm', action='store',type=str2bool, default=False,
             help='whether to use tqdm')
+    parser.add_argument('--attack_name', action='store', default="pgd",
+            help='# of epochs of training')
     args = parser.parse_args()
 
     print(args)
@@ -403,7 +399,7 @@ if __name__ == "__main__":
     # def my_target(x,y):
     #     return (y+1)%10
     
-    attacker = PGD(model, step_size=0.001, steps=30)
+    attacker = PGD(model, step_size=args.attack_lr, steps=args.attack_runs)
     attacker(testloader, True)
     this_accuracy = CEval()
     this_max = attacker.noise_max().item()

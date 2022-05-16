@@ -223,6 +223,8 @@ if __name__ == "__main__":
             help='if we should load the noise directions')
     parser.add_argument('--use_tqdm', action='store',type=str2bool, default=False,
             help='whether to use tqdm')
+    parser.add_argument('--attack_name', action='store', default="C&W",
+            help='# of epochs of training')
     args = parser.parse_args()
 
     print(args)
