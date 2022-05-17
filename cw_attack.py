@@ -775,7 +775,7 @@ def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, at
         else:
             Exception("Metric not implemented")
         if verbose:
-            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f},  max: {this_max:.4f}")
         if metric < target_metric:
             last_bad_c = init_c
             init_c = (init_c + final_c) / 2
