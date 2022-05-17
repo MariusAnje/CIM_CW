@@ -407,13 +407,81 @@ if __name__ == "__main__":
     
     # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.15, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
     # binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True, use_tqdm = args.use_tqdm)
+    # model.clear_noise()
+    # attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
+    # attacker.set_mode_default()
+    # attacker(testloader, args.use_tqdm)
+    # w = attacker.get_noise()
+    # this_max = attacker.noise_max().item()
+    # this_l2 = attacker.noise_l2().item()
+    # this_accuracy = CEval()
+    # print(f"C: {args.attack_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
+    # torch.save(w, f"noise_{args.model}_{args.attack_c}_{args.attack_lr}.pt")
+
     model.clear_noise()
-    attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
-    attacker.set_mode_default()
-    attacker(testloader, args.use_tqdm)
-    w = attacker.get_noise()
-    this_max = attacker.noise_max().item()
-    this_l2 = attacker.noise_l2().item()
-    this_accuracy = CEval()
-    print(f"C: {args.attack_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
-    torch.save(w, f"noise_{args.model}_{args.attack_c}_{args.attack_lr}.pt")
+parent_dir = args.model_path
+file_list = os.listdir(parent_dir)
+wcw_res = torch.Tensor([]).to(device)
+print(file_list)
+if args.load_atk:
+    noise = torch.load(os.path.join(parent_dir, file_list[-1]), map_location=device)
+    i = 0
+    for name, m in model.named_modules():
+        if isinstance(m, NModule) or isinstance(m, SModule):
+            # m.noise.data = noise[i].data
+            # m.noise = m.noise.to(device)
+            m.op.weight.data += noise[i].data
+            m.op.weight = m.op.weight.to(device)
+            wcw_res = torch.cat([wcw_res, noise[i].data.view(-1)])
+            i += 1
+print(f"Attack central acc: {CEval():.4f}")
+
+
+noise_size = 0
+for m in model.modules():
+    if isinstance(m, SModule) or isinstance(m, NModule):
+        noise_size += m.op.weight.shape.numel()
+
+if not args.load_direction:
+    total_noise = torch.randn(args.noise_epoch, noise_size)
+    
+    # wcw_res = wcw_res.reshape(1,-1) * -1
+    # print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
+    # total_noise = torch.cat([total_noise, wcw_res])
+    
+    # total_noise = total_noise * total_noise.abs()
+    scale = total_noise.max()
+    total_noise /= scale
+    torch.save(total_noise, f"pretrained/{args.model}/directions.pt")
+else:
+    total_noise = torch.load(f"pretrained/{args.model}/directions.pt")
+    if len(total_noise) < args.noise_epoch:
+        raise Exception("Saved direction not enough")
+    else:
+        total_noise = total_noise[:args.noise_epoch]
+model.to_first_only()
+
+max_list = []
+avg_list = []
+acc_list = []
+l2 = args.alpha
+
+loader = tqdm(range(len(total_noise)))
+# loader = range(len(total_noise))
+for i in loader:
+    left = 0
+    model.clear_noise()
+    # model.set_noise(l2, 0.0)
+    for m in model.modules():
+        if isinstance(m, SModule) or isinstance(m, NModule):
+            this_size = m.op.weight.shape.numel()
+            m.noise.data = (total_noise[i, left:left+this_size].reshape(m.noise.shape) * l2).to(device)
+            # m.noise = m.noise.to(device)
+            left += this_size
+    acc = CEval()
+    acc_list.append(acc)
+    # print(f"This acc: {acc:.4f}")
+    if isinstance(loader, tqdm):
+        loader.set_description(f"{np.mean(acc_list):.4f}, {np.max(acc_list):.4f}")
+print(f"L2: {l2:.1e}, Mean: {np.mean(acc_list):.4f}, Max: {np.max(acc_list):.4f}, Min: {np.min(acc_list):.4f}")
+torch.save(acc_list, f"Circle_acc_list_{l2:.1e}.pt")
