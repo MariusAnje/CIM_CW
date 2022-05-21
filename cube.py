@@ -450,7 +450,7 @@ if not args.load_direction:
     # total_noise = torch.cat([total_noise, wcw_res])
     
     # total_noise = total_noise * total_noise.abs()
-    scale = total_noise.max()
+    scale = total_noise.max(dim=1)[0].reshape(len(total_noise),1)
     total_noise /= scale
     torch.save(total_noise, f"pretrained/{args.model}/directions.pt")
 else:
@@ -466,8 +466,11 @@ avg_list = []
 acc_list = []
 l2 = args.alpha
 
-loader = tqdm(range(len(total_noise)))
-# loader = range(len(total_noise))
+if args.use_tqdm:
+    loader = tqdm(range(len(total_noise)))
+else:
+    loader = range(len(total_noise))
+
 for i in loader:
     left = 0
     model.clear_noise()
@@ -484,4 +487,4 @@ for i in loader:
     if isinstance(loader, tqdm):
         loader.set_description(f"{np.mean(acc_list):.4f}, {np.max(acc_list):.4f}")
 print(f"L2: {l2:.1e}, Mean: {np.mean(acc_list):.4f}, Max: {np.max(acc_list):.4f}, Min: {np.min(acc_list):.4f}")
-torch.save(acc_list, f"Circle_acc_list_{l2:.1e}.pt")
+torch.save(acc_list, f"Cube_acc_list_{l2:.1e}.pt")

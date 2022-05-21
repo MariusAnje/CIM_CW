@@ -401,6 +401,13 @@ if __name__ == "__main__":
         print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
     except:
         pass
+    
+    acc_list = []
+    for i in range(args.noise_epoch):
+        acc = NEval(0.1, 0.0)
+        acc_list.append(acc)
+    print(f"mean: {np.mean(acc_list):.4f}, std: {np.std(acc_list):.4f}, min: {np.min(acc_list):.4f}")
+    exit()
 
     # def my_target(x,y):
     #     return (y+1)%10
