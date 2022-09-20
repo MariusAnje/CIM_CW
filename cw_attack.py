@@ -752,14 +752,17 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
     return final_accuracy, final_max, final_l2, final_c
 
 def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, attacker_class, model, init_c, steps, lr, method="l2", verbose=True, use_tqdm=False):
-    last_bad_c = 0
+    start_flag = True
+    low = 0
+    high = init_c
+    mid = init_c
     final_accuracy = 0.0
     final_c = init_c
     final_max = None
     final_l2 = None
     for _ in range(search_runs):
         model.clear_noise()
-        attacker = attacker_class(model, c=init_c, kappa=0, steps=steps, lr=lr, method=method)
+        attacker = attacker_class(model, c=mid, kappa=0, steps=steps, lr=lr, method=method)
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
@@ -769,23 +772,33 @@ def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, at
         this_l2 = attacker.noise_l2().item()
         this_accuracy = acc_evaluator().item()
         if attacker.method == "l2":
-            metric = attacker.noise_l2()
+            metric = attacker.noise_l2().item()
         elif attacker.method == "max":
-            metric = attacker.noise_max()
+            metric = attacker.noise_max().item()
         else:
             Exception("Metric not implemented")
         if verbose:
-            print(f"C: {init_c:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f},  max: {this_max:.4f}")
+            print(f"C: {mid:.4e}, acc: {this_accuracy:.4f}, l2: {this_l2:.4f},  max: {this_max:.4f}")
         if metric < target_metric:
-            last_bad_c = init_c
-            init_c = (init_c + final_c) / 2
+            if start_flag:
+                mid = mid * 10
+                high = mid
+            else:
+                low = mid
+                mid = (low + high) / 2
         else:
-            final_c   = init_c
+            final_c   = mid
             final_max = this_max
             final_l2  = this_l2
             final_accuracy = this_accuracy
-            if last_bad_c == 0:
-                init_c = init_c / 10
+            if low == 0:
+                mid = mid / 10
+                if not start_flag:
+                    high = high / 10
             else:
-                init_c = (init_c + last_bad_c) / 2
+                high = mid
+                mid = (low + high) / 2
+            start_flag = False
+            if np.abs(metric-target_metric) < 1e-5:
+                break
     return final_accuracy, final_max, final_l2, final_c

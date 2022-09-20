@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from Functions import SCrossEntropyLossFunction
 from modules import SReLU, SModel, SMaxpool2D, SModule, NModule
+from modules import SReLU, SModel, SMaxpool2D, SFixedDropout
 from qmodules import QSLinear, QSConv2d
 
 class QSModel(SModel):
@@ -64,6 +65,7 @@ class QSLeNet(QSModel):
         self.conv2 = QSConv2d(N, 6, 16, 3, padding=1)
         # an affine operation: y = Wx + b
         self.fc1 = QSLinear(N, 16 * 7 * 7, 120)  # 6*6 from image dimension
+        self.drop_fc1 = SFixedDropout(torch.Size([120]))
         self.fc2 = QSLinear(N, 120, 84)
         self.fc3 = QSLinear(N, 84, 10)
         self.pool = SMaxpool2D(2)
@@ -84,6 +86,7 @@ class QSLeNet(QSModel):
         x = self.unpack_flattern(x)
         
         x = self.fc1(x)
+        x = self.drop_fc1(x)
         x = self.relu(x)
         
         x = self.fc2(x)

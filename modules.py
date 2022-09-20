@@ -118,6 +118,7 @@ class SModule(nn.Module):
         # self.weightS = self.weightS.to(self.op.weight.device)
         self.mask = self.mask.to(self.op.weight.device)
         self.noise = self.noise.to(self.op.weight.device)
+        self.input_range = self.input_range.to(self.op.weight.device)
 
     def clear_S_grad(self):
         with torch.no_grad():
@@ -222,6 +223,7 @@ class NModule(nn.Module):
     def push_S_device(self):
         self.mask = self.mask.to(self.op.weight.device)
         self.noise = self.noise.to(self.op.weight.device)
+        self.input_range = self.input_range.to(self.op.weight.device)
     
     def normalize(self):
         if self.original_w is None:
@@ -368,6 +370,7 @@ class SAct(nn.Module):
     def push_S_device(self, device):
         self.mask = self.mask.to(device)
         self.noise = self.noise.to(device)
+        # self.input_range = self.input_range.to(self.op.weight.device)
 
     def forward(self, xC):
         x, xS = xC
@@ -400,6 +403,7 @@ class NAct(nn.Module):
     def push_S_device(self, device):
         self.mask = self.mask.to(device)
         self.noise = self.noise.to(device)
+        # self.input_range = self.input_range.to(self.op.weight.device)
 
     def forward(self, x):
         return x + self.noise * self.mask
@@ -416,10 +420,22 @@ class FakeSModule(nn.Module):
         x = self.op(x)
         return x, None
 
+
+
 class NModel(nn.Module):
     def __init__(self):
         super().__init__()
 
+    def select_drop(self, p):
+        for mo in self.modules():
+            if isinstance(mo, NFixedDropout) or isinstance(mo, SFixedDropout):
+                mo.select(p)
+    
+    def de_select_drop(self):
+        for mo in self.modules():
+            if isinstance(mo, NFixedDropout) or isinstance(mo, SFixedDropout):
+                mo.de_select()
+    
     def set_noise(self, dev_var, write_var, N=8, m=1):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):
@@ -448,6 +464,16 @@ class SModel(nn.Module):
     def __init__(self):
         super().__init__()
         self.first_only = False
+    
+    def select_drop(self, p):
+        for mo in self.modules():
+            if isinstance(mo, SFixedDropout) or isinstance(mo, NFixedDropout):
+                mo.select(p)
+    
+    def de_select_drop(self):
+        for mo in self.modules():
+            if isinstance(mo, SFixedDropout) or isinstance(mo, NFixedDropout):
+                mo.de_select()
     
     def init_weight(self):
         for m in self.modules():
@@ -582,7 +608,7 @@ class SModel(nn.Module):
             if isinstance(m, SModel):
                 m.first_only = True
         for n, m in self.named_modules():
-            if isinstance(m, SModule) or isinstance(m, SAct):
+            if isinstance(m, SModule) or isinstance(m, SAct) or isinstance(m, SFixedDropout):
                 n = n.split(".")
                 father = self
                 for i in range(len(n) - 1):
@@ -606,7 +632,7 @@ class SModel(nn.Module):
                 if isinstance(m, SModel):
                     m.first_only = False
             for n, m in self.named_modules():
-                if isinstance(m, NModule) or isinstance(m, NAct):
+                if isinstance(m, NModule) or isinstance(m, NFixedDropout) or isinstance(m, NAct):
                     n = n.split(".")
                     father = self
                     for i in range(len(n) - 1):
@@ -699,3 +725,50 @@ class SModel(nn.Module):
                 else:
                     raise NotImplementedError
         self.to(device)
+
+class FixedDropout(nn.Module):
+    def __init__(self, shape:torch.Size):
+        super().__init__()
+        self.shape = shape
+        self.scale = 1
+        self.device = torch.device("cpu")
+        self.mask = torch.ones(shape).to(self.device)
+    
+    def select(self, p):
+        p_ext = torch.ones(self.shape) * (1 - p)
+        self.mask = torch.bernoulli(p_ext).to(self.device)
+        self.scale = (self.shape.numel()/self.mask.sum()).item()
+    
+    def de_select(self):
+        self.mask = torch.ones(self.shape).to(self.device)
+
+class SFixedDropout(FixedDropout):
+    def __init__(self, shape:torch.Size):
+        super().__init__(shape)
+    
+    def copy_N(self):
+        new = NFixedDropout(self.shape)
+        new.scale = self.scale
+        new.mask = self.mask
+        new.device = self.device
+        return new
+    
+    def forward(self, xC):
+        x, xS = xC
+        # ext_mask = self.mask.expand_as(x)
+        return x * self.mask * self.scale, torch.ones_like(x)
+
+class NFixedDropout(FixedDropout):
+    def __init__(self, shape:torch.Size):
+        super().__init__(shape)
+    
+    def copy_S(self):
+        new = SFixedDropout(self.shape)
+        new.scale = self.scale
+        new.mask = self.mask
+        new.device = self.device
+        return new
+    
+    def forward(self, x):
+        # ext_mask = self.mask.expand_as(x)
+        return x * self.mask * self.scale

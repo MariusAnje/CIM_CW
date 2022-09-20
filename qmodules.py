@@ -5,6 +5,7 @@ from torch import nn
 from Functions import SLinearFunction, SConv2dFunction, SMSEFunction, SCrossEntropyLossFunction, SBatchNorm2dFunction
 
 quant = QuantFunction.apply
+_moving_momentum = 0.9
 
 class QSLinear(SModule):
     def __init__(self, N, in_features, out_features, bias=True):
@@ -13,6 +14,7 @@ class QSLinear(SModule):
         self.create_helper()
         self.function = SLinearFunction.apply
         self.N = N
+        self.register_buffer('input_range', torch.zeros(1))
     
     def copy_N(self):
         new = QNLinear(self.N, self.op.in_features, self.op.out_features, False if self.op.bias is None else True)
@@ -20,6 +22,7 @@ class QSLinear(SModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.input_range = self.input_range
         return new
 
     def forward(self, xC):
@@ -29,7 +32,13 @@ class QSLinear(SModule):
             x += quant(self.N, self.op.bias)
         if self.op.bias is not None:
             xS += self.op.bias
-        return quant(self.N, x), xS
+        if self.training:
+            this_max = x.abs().max().item()
+            if self.input_range == 0:
+                self.input_range += this_max
+            else:
+                self.input_range = self.input_range * _moving_momentum + this_max * (1-_moving_momentum)
+        return quant(self.N, x, self.input_range), xS
 
 class QSConv2d(SModule):
     def __init__(self, N, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
@@ -38,6 +47,7 @@ class QSConv2d(SModule):
         self.create_helper()
         self.function = SConv2dFunction.apply
         self.N = N
+        self.register_buffer('input_range', torch.zeros(1))
 
     def copy_N(self):
         new = QNConv2d(self.N, self.op.in_channels, self.op.out_channels, self.op.kernel_size, self.op.stride, self.op.padding, self.op.dilation, self.op.groups, False if self.op.bias is None else True, self.op.padding_mode)
@@ -45,6 +55,7 @@ class QSConv2d(SModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.input_range = self.input_range
         return new
 
     def forward(self, xC):
@@ -55,7 +66,13 @@ class QSConv2d(SModule):
         if self.op.bias is not None:
             xS += self.op.bias.reshape(1,-1,1,1).expand_as(xS)
         # x, xS = self.function(x * self.scale, xS * self.scale, quant(self.N, self.op.weight) + self.noise, self.weightS, self.op.bias, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)
-        return quant(self.N, x), xS
+        if self.training:
+            this_max = x.abs().max().item()
+            if self.input_range == 0:
+                self.input_range += this_max
+            else:
+                self.input_range = self.input_range * _moving_momentum + this_max * (1-_moving_momentum)
+        return quant(self.N, x, self.input_range), xS
 
 class QNLinear(NModule):
     def __init__(self, N, in_features, out_features, bias=True):
@@ -66,6 +83,7 @@ class QNLinear(NModule):
         self.function = nn.functional.linear
         self.N = N
         self.scale = 1.0
+        self.register_buffer('input_range', torch.zeros(1))
 
     def copy_S(self):
         new = QSLinear(self.N, self.op.in_features, self.op.out_features, False if self.op.bias is None else True)
@@ -73,6 +91,7 @@ class QNLinear(NModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.input_range = self.input_range
         return new
 
     def forward(self, x):
@@ -81,8 +100,13 @@ class QNLinear(NModule):
         if self.op.bias is not None:
             x += self.op.bias
         # x = self.function(x, (quant(self.N, self.op.weight) + self.noise)  * self.scale , quant(self.N, self.op.bias))
-
-        return quant(self.N, x)
+        if self.training:
+            this_max = x.abs().max().item()
+            if self.input_range == 0:
+                self.input_range += this_max
+            else:
+                self.input_range = self.input_range * _moving_momentum + this_max * (1-_moving_momentum)
+        return quant(self.N, x, self.input_range)
 
 class QNConv2d(NModule):
     def __init__(self, N, in_channels, out_channels, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True, padding_mode='zeros'):
@@ -93,6 +117,7 @@ class QNConv2d(NModule):
         self.function = nn.functional.conv2d
         self.N = N
         self.scale = 1.0
+        self.register_buffer('input_range', torch.zeros(1))
     
     def copy_S(self):
         new = QSConv2d(self.N, self.op.in_channels, self.op.out_channels, self.op.kernel_size, self.op.stride, self.op.padding, self.op.dilation, self.op.groups, False if self.op.bias is None else True, self.op.padding_mode)
@@ -100,6 +125,7 @@ class QNConv2d(NModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.input_range = self.input_range
         return new
 
     def init_weights(self):
@@ -113,4 +139,10 @@ class QNConv2d(NModule):
         x = x * self.scale
         if self.op.bias is not None:
             x += quant(self.N, self.op.bias).reshape(1,-1,1,1).expand_as(x)
-        return quant(self.N, x)
+        if self.training:
+            this_max = x.abs().max().item()
+            if self.input_range == 0:
+                self.input_range += this_max
+            else:
+                self.input_range = self.input_range * _moving_momentum + this_max * (1-_moving_momentum)
+        return quant(self.N, x, self.input_range)
