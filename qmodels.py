@@ -85,8 +85,11 @@ class QSLeNet(QSModel):
         
         x = self.unpack_flattern(x)
         
-        x = self.fc1(x)
-        x = self.drop_fc1(x)
+        self.xx = self.fc1(x)
+        # self.xx[1].retain_grad()
+        # self.xx[0].retain_grad()
+        # print(self.xx[1].grad)
+        x = self.drop_fc1(self.xx)
         x = self.relu(x)
         
         x = self.fc2(x)

@@ -3,7 +3,7 @@ from torch import nn
 from torch import functional
 from torch._C import device
 from torch.nn.modules.pooling import MaxPool2d
-from Functions import SLinearFunction, SConv2dFunction, SMSEFunction, SCrossEntropyLossFunction, SBatchNorm2dFunction, TimesFunction
+from Functions import SLinearFunction, SConv2dFunction, SMSEFunction, SCrossEntropyLossFunction, SBatchNorm2dFunction, TimesFunction, SDropout
 import numpy as np
 
 class SModule(nn.Module):
@@ -745,6 +745,7 @@ class FixedDropout(nn.Module):
 class SFixedDropout(FixedDropout):
     def __init__(self, shape:torch.Size):
         super().__init__(shape)
+        self.function = SDropout.apply
     
     def copy_N(self):
         new = NFixedDropout(self.shape)
@@ -755,8 +756,8 @@ class SFixedDropout(FixedDropout):
     
     def forward(self, xC):
         x, xS = xC
-        # ext_mask = self.mask.expand_as(x)
-        return x * self.mask * self.scale, torch.ones_like(x)
+        x, xS = self.function(x, xS, self.mask, self.scale)
+        return x, xS
 
 class NFixedDropout(FixedDropout):
     def __init__(self, shape:torch.Size):

@@ -682,6 +682,7 @@ class PGD(WCW):
     def __init__(self, model, step_size=0.0001, steps=1000):
         super().__init__(model, c=0, kappa=0, steps=steps, lr=step_size, method="l2")
         self.f = nn.CrossEntropyLoss()
+        self._targeted = False
     
     def forward(self, testloader, use_tqdm=False):
         r"""
@@ -702,7 +703,7 @@ class PGD(WCW):
             for i, (images, labels) in enumerate(testloader):
                 images, labels = images.to(self.device), labels.to(self.device)
                 outputs = self.model(images)
-                cost = self.f(outputs, labels)
+                cost = self.f(outputs, labels).sum()
                 running_cost += cost.item()
 
                 # optimizer.zero_grad()

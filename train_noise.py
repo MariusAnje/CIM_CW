@@ -1,10 +1,8 @@
 from cProfile import label
-from email.policy import strict
 from sklearn.utils import shuffle
 import torch
-from torch.nn.modules import module
 import torchvision
-from torch import isin, optim
+from torch import optim
 import torchvision.transforms as transforms
 import numpy as np
 from models import SCrossEntropyLoss, SMLP3, SMLP4, SLeNet, CIFAR, FakeSCrossEntropyLoss, SAdvNet
@@ -177,7 +175,7 @@ if __name__ == "__main__":
             help='# of epochs of training')
     parser.add_argument('--noise_epoch', action='store', type=int, default=100,
             help='# of epochs of noise validations')
-    parser.add_argument('--train_var', action='store', type=float, default=0.0,
+    parser.add_argument('--train_var', action='store', type=float, default=0.1,
             help='device variation [std] when training')
     parser.add_argument('--dev_var', action='store', type=float, default=0.3,
             help='device variation [std] before write and verify')
@@ -217,18 +215,12 @@ if __name__ == "__main__":
             help='learning rate for attack')
     parser.add_argument('--attack_method', action='store', default="l2", choices=["max", "l2", "linf", "loss"],
             help='method used for attack')
-    parser.add_argument('--attack_dist', action='store', type=float, default=0.03,
-            help='distance used for attack')
     parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
             help='if we should load the attack')
     parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
             help='if we should load the noise directions')
     parser.add_argument('--use_tqdm', action='store',type=str2bool, default=False,
             help='whether to use tqdm')
-    parser.add_argument('--attack_name', action='store', default="C&W",
-            help='# of epochs of training')
-    parser.add_argument('--drop', action='store',type=float, default=0.0,
-            help='random dropout ratio')
     args = parser.parse_args()
 
     print(args)
@@ -350,85 +342,63 @@ if __name__ == "__main__":
         NotImplementedError
 
     model.to(device)
-    for m in model.modules():
-        if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
-            m.device = device
     model.push_S_device()
     model.clear_noise()
     model.clear_mask()
-    model.to_first_only()
-    model.de_select_drop()
     criteria = SCrossEntropyLoss()
     criteriaF = torch.nn.CrossEntropyLoss()
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
-    args.train_epoch = 100
-    # args.dev_var = 0.3
-    # args.train_var = 0.3
-    args.train_var = 0.0
-    # args.verbose = True
     
-    print(model.fc1.op.weight.shape)
-    print(model.drop_fc1.mask.device)
-    NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
-    if args.train_var > 0:
-        state_dict = torch.load(f"tmp_best_{header}.pt")
-        model.load_state_dict(state_dict)
+    model.to_first_only()
+    NTrain(args.train_epoch, header, dev_var=args.train_var, write_var=0.0, verbose=args.verbose)
+    model.clear_noise()
+    state_dict = torch.load(f"tmp_best_{header}.pt")
+    model.load_state_dict(state_dict)
     model.from_first_back_second()
-    torch.save(model.state_dict(), f"saved_B_{header}_{args.train_var}.pt")
+    torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.train_var}.pt")
     model.clear_noise()
     print(f"No mask no noise: {CEval():.4f}")
-    state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt")
+    state_dict = torch.load(f"saved_B_{header}_noise_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
+    model.to_first_only()
     performance = NEachEval(args.dev_var, 0.0)
     print(f"No mask noise acc: {performance:.4f}")
+    mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
 
-    target_acc = 0.7
-    mask_store_list = []
-    for i in range(5):
-        parent_path = args.model_path
-        args.train_var = 0.0
-        header = args.header
-        model.from_first_back_second()
-        state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
-        if args.model == "Adv":
-            model.conv1.op.weight.data, model.conv1.op.bias.data = state_dict["conv1.weight"].data, state_dict["conv1.bias"].data
-            model.conv2.op.weight.data, model.conv2.op.bias.data = state_dict["conv2.weight"].data, state_dict["conv2.bias"].data
-            model.fc1.op.weight.data, model.fc1.op.bias.data = state_dict["fc1.weight"].data, state_dict["fc1.bias"].data
-            model.fc2.op.weight.data, model.fc2.op.bias.data = state_dict["fc2.weight"].data, state_dict["fc2.bias"].data
-        else:
-            model.load_state_dict(state_dict, strict=False)
-        if args.model == "MLP3_2":
-            model.fc1 = model.fc1.op
-        model.to(device)
-        for m in model.modules():
-            if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
-                m.device = device
-        model.normalize()
-        model.clear_mask()
-        model.clear_noise()
-        model.push_S_device()
-        model.to_first_only()
-        model.de_select_drop()
-        model.select_drop(args.drop)
-        print(f"No mask no noise: {CEval():.4f}")
-        try:
-            no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
-            print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
-        except:
-            pass
+    parent_path = args.model_path
+    args.train_var = 0.0
+    header = args.header
+    model.from_first_back_second()
+    state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
+    if args.model == "Adv":
+        model.conv1.op.weight.data, model.conv1.op.bias.data = state_dict["conv1.weight"].data, state_dict["conv1.bias"].data
+        model.conv2.op.weight.data, model.conv2.op.bias.data = state_dict["conv2.weight"].data, state_dict["conv2.bias"].data
+        model.fc1.op.weight.data, model.fc1.op.bias.data = state_dict["fc1.weight"].data, state_dict["fc1.bias"].data
+        model.fc2.op.weight.data, model.fc2.op.bias.data = state_dict["fc2.weight"].data, state_dict["fc2.bias"].data
+    else:
+        model.load_state_dict(state_dict)
+    if args.model == "MLP3_2":
+        model.fc1 = model.fc1.op
+    model.normalize()
+    model.clear_mask()
+    model.clear_noise()
+    model.to_first_only()
+    print(f"No mask no noise: {CEval():.4f}")
+    try:
+        no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
+        print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
+    except:
+        pass
 
-        acc, dist_max, dist_l2, c = binary_search_dist(search_runs = 100, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=args.verbose, use_tqdm = args.use_tqdm)
-        print(f"C: {c:.4e}, acc: {acc:.4f}, l2: {dist_l2:.4f},  max: {dist_max:.4f}")
-        if acc > target_acc:
-            # print(model.drop_fc1.mask)
-            mask_store_list.append(model.drop_fc1.mask)
-    print(f"Done searching, found {len(mask_store_list)} good results.")
-    torch.save(mask_store_list, f"mask_store_list_{time.time()}.pt")
+    # def my_target(x,y):
+    #     return (y+1)%10
     
+    # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.15, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True)
+    binary_search_dist(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, target_metric=0.03, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=True, use_tqdm = args.use_tqdm)
     # target max: 0.03, header = 2
     # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
     # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4

@@ -291,3 +291,18 @@ class SCrossEntropyLossFunction(autograd.Function):
         test_nan(exp, exp_sum, grad_input, grad_inputS, ratio)
 
         return grad_input, grad_inputS, None, None, None, None, None, None
+    
+class SDropout(autograd.Function):
+    @staticmethod
+    # bias is an optional argument
+    def forward(ctx, input, inputS, mask, scale):
+        ctx.scale = scale
+        output = input * mask * scale
+        return output, torch.ones_like(output)
+
+    # This function has only a single output, so it gets only one gradient
+    @staticmethod
+    def backward(ctx, grad_output, grad_outputS):
+        grad_input  = grad_output  * ctx.scale
+        grad_inputS = grad_outputS * (ctx.scale ** 2)
+        return grad_input, grad_inputS, None, None

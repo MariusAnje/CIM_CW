@@ -20,7 +20,7 @@ from tqdm import tqdm
 import time
 import argparse
 import os
-from cw_attack import Attack, WCW, binary_search_c, binary_search_dist
+from cw_attack import Attack, WCW, binary_search_c, binary_search_dist, PGD
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -169,6 +169,23 @@ def attack_wcw(model, val_data, verbose=False):
         print(f"L2 norm: {np.mean(avg_list):.4f}, max: {np.mean(max_list):.4f}, acc: {mean_attack:.4f}")
     w = attacker.get_noise()
     return mean_attack, w
+
+def GetSecond():
+    model.eval()
+    model.clear_noise()
+    optimizer.zero_grad()
+    act_grad = torch.zeros(120).to(device)
+    for images, labels in tqdm(secondloader):
+#     for images, labels in secondloader:
+        images, labels = images.to(device), labels.to(device)
+        # images = images.view(-1, 784)
+        outputs, outputsS = model(images)
+        loss = criteria(outputs, outputsS,labels)
+        model.xx[1].retain_grad()
+        loss.backward()
+        act_grad += model.xx[1].grad.data.sum(axis=0)
+        model.xx[1].grad.data.zero_()
+    return act_grad
 
 
 if __name__ == "__main__":
@@ -348,86 +365,78 @@ if __name__ == "__main__":
         model = qresnetIN.resnet18(num_classes = 1000)
     else:
         NotImplementedError
+    
+    criteria = SCrossEntropyLoss()
+    criteriaF = torch.nn.CrossEntropyLoss()
 
+    # optimizer = optim.Adam(model.parameters(), lr=0.01)
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [20])
+
+    if "TIN" in args.model or "Res" in args.model or "VGG" in args.model or "DENSE" in args.model:
+    # if "TIN" in args.model or "Res" in args.model:
+        optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch)
+    # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [1000])
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
+    
+    parent_path = args.model_path
+    args.train_var = 0.0
+    header = args.header
+    model.from_first_back_second()
+    state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
+    if args.model == "Adv":
+        model.conv1.op.weight.data, model.conv1.op.bias.data = state_dict["conv1.weight"].data, state_dict["conv1.bias"].data
+        model.conv2.op.weight.data, model.conv2.op.bias.data = state_dict["conv2.weight"].data, state_dict["conv2.bias"].data
+        model.fc1.op.weight.data, model.fc1.op.bias.data = state_dict["fc1.weight"].data, state_dict["fc1.bias"].data
+        model.fc2.op.weight.data, model.fc2.op.bias.data = state_dict["fc2.weight"].data, state_dict["fc2.bias"].data
+    else:
+        model.load_state_dict(state_dict, strict=False)
+    if args.model == "MLP3_2":
+        model.fc1 = model.fc1.op
     model.to(device)
     for m in model.modules():
         if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
             m.device = device
+    model.normalize()
+    model.clear_mask()
+    model.clear_noise()
     model.push_S_device()
-    model.clear_noise()
-    model.clear_mask()
-    model.to_first_only()
     model.de_select_drop()
-    criteria = SCrossEntropyLoss()
-    criteriaF = torch.nn.CrossEntropyLoss()
-
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
-    args.train_epoch = 100
-    # args.dev_var = 0.3
-    # args.train_var = 0.3
-    args.train_var = 0.0
-    # args.verbose = True
-    
-    print(model.fc1.op.weight.shape)
-    print(model.drop_fc1.mask.device)
-    NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
-    if args.train_var > 0:
-        state_dict = torch.load(f"tmp_best_{header}.pt")
-        model.load_state_dict(state_dict)
-    model.from_first_back_second()
-    torch.save(model.state_dict(), f"saved_B_{header}_{args.train_var}.pt")
-    model.clear_noise()
+    act_grad = GetSecond()
+    new_mask = (act_grad.argsort() >= 12)
+    print("AS")
+    # new_mask = ((model.fc1.weightS.grad.data * (1 + model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
+    # print("S + W2")
+    # new_mask = ((model.fc1.weightS.grad.data).sum(axis=1).argsort() >= 12)
+    # print("S")
+    # new_mask = ((model.fc1.weightS.grad.data * (model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
+    # print("S * W2")
+    # new_mask = ((model.fc1.op.weight.data ** 2).sum(axis=1).argsort() >= 12)
+    # print("W2")
+    # new_mask = loaded_mask
+    model.drop_fc1.mask.data = new_mask
+    model.drop_fc1.scale = len(new_mask) / new_mask.sum().item()
     print(f"No mask no noise: {CEval():.4f}")
-    state_dict = torch.load(f"saved_B_{header}_{args.train_var}.pt")
-    model.load_state_dict(state_dict)
-    model.clear_mask()
-    performance = NEachEval(args.dev_var, 0.0)
-    print(f"No mask noise acc: {performance:.4f}")
-    exit()
+    try:
+        no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
+        print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
+    except:
+        pass
+    
+    model.to_first_only()
+    attacker = PGD(model, step_size=0.0001, steps=150)
+    attacker(testloader, args.use_tqdm)
+    this_accuracy = CEval()
+    this_max = attacker.noise_max().item()
+    this_l2 = attacker.noise_l2().item()
+    print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+    model.clear_noise()
+    # exit()
 
-    target_acc = 0.7
-    mask_store_list = []
-    for i in range(5):
-        parent_path = args.model_path
-        args.train_var = 0.0
-        header = args.header
-        model.from_first_back_second()
-        state_dict = torch.load(os.path.join(parent_path, f"saved_B_{header}.pt"), map_location=device)
-        if args.model == "Adv":
-            model.conv1.op.weight.data, model.conv1.op.bias.data = state_dict["conv1.weight"].data, state_dict["conv1.bias"].data
-            model.conv2.op.weight.data, model.conv2.op.bias.data = state_dict["conv2.weight"].data, state_dict["conv2.bias"].data
-            model.fc1.op.weight.data, model.fc1.op.bias.data = state_dict["fc1.weight"].data, state_dict["fc1.bias"].data
-            model.fc2.op.weight.data, model.fc2.op.bias.data = state_dict["fc2.weight"].data, state_dict["fc2.bias"].data
-        else:
-            model.load_state_dict(state_dict, strict=False)
-        if args.model == "MLP3_2":
-            model.fc1 = model.fc1.op
-        model.to(device)
-        for m in model.modules():
-            if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
-                m.device = device
-        model.normalize()
-        model.clear_mask()
-        model.clear_noise()
-        model.push_S_device()
-        model.to_first_only()
-        model.de_select_drop()
-        model.select_drop(args.drop)
-        print(f"No mask no noise: {CEval():.4f}")
-        try:
-            no_mask_acc_list = torch.load(os.path.join(parent_path, f"no_mask_list_{header}_{args.dev_var}.pt"))
-            print(f"[{args.dev_var}] No mask noise average acc: {np.mean(no_mask_acc_list):.4f}, std: {np.std(no_mask_acc_list):.4f}")
-        except:
-            pass
-
-        acc, dist_max, dist_l2, c = binary_search_dist(search_runs = 100, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=args.verbose, use_tqdm = args.use_tqdm)
-        print(f"C: {c:.4e}, acc: {acc:.4f}, l2: {dist_l2:.4f},  max: {dist_max:.4f}")
-        if acc > target_acc:
-            # print(model.drop_fc1.mask)
-            mask_store_list.append(model.drop_fc1.mask)
-    print(f"Done searching, found {len(mask_store_list)} good results.")
-    torch.save(mask_store_list, f"mask_store_list_{time.time()}.pt")
+    acc, dist_max, dist_l2, c = binary_search_dist(search_runs = 100, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method, verbose=args.verbose, use_tqdm = args.use_tqdm)
+    print(f"C&W Results --> C: {c:.4e}, acc: {acc:.4f}, l2: {dist_l2:.4f},  max: {dist_max:.4f}")
     
     # target max: 0.03, header = 2
     # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
@@ -436,100 +445,3 @@ if __name__ == "__main__":
     # Model: QTIN   acc:0.0000, c = 1,  dist = 0.0059, lr = 1e-4
     # Model: QVGGIN acc:0.0008, c = 1,  dist = 0.0273, lr = 1e-4
     exit()
-
-    # j = 0
-    # for _ in range(10000):
-    # # binary_search_c(search_runs = 10, acc_evaluator=CEval, dataloader=testloader, th_accuracy=0.001, attacker_class=WCW, model=model, init_c=1, steps=10, lr=0.01, method="l2", verbose=True)
-    #     acc, w = attack_wcw(model, testloader, True)
-    #     if acc < 0.01:
-    #         print("Success, saving!")
-    #         torch.save(w, f"noise_{args.model}_{time.time()}.pt")
-    #         j += 1
-    #     if j >= 3:
-    #         break
-    # exit()
-
-    # parent_dir = "./pretrained/many_noise/QLeNet"
-    # parent_dir = "./pretrained/many_noise/LeNet_norm"
-    # parent_dir = "./pretrained/many_noise/MLP3"
-    parent_dir = "./pretrained/many_noise/MLP3_2"
-    file_list = os.listdir(parent_dir)
-    w = torch.Tensor([]).to(device)
-    if args.load_atk:
-        noise = torch.load(os.path.join(parent_dir, file_list[1]), map_location=device)
-        i = 0
-        for name, m in model.named_modules():
-            if isinstance(m, NModule) or isinstance(m, SModule):
-                # m.noise.data += noise[i].data
-                # m.noise = m.noise.to(device)
-                m.op.weight.data += noise[i].data
-                m.op.weight = m.op.weight.to(device)
-                w = torch.cat([w, noise[i].data.view(-1)])
-                i += 1
-
-    # th = 0.02
-    # mask = noise[0].abs()>th
-    # print(mask.sum()/mask.shape.numel())
-    # model.fc1.op.weight.data[mask] = state_dict["fc1.op.weight"][mask]
-    # model.conv1.op.weight.data = state_dict["conv1.op.weight"]
-    # model.conv2.op.weight.data = state_dict["conv2.op.weight"]
-    # model.fc1.op.weight.data = state_dict["fc1.op.weight"]
-    # model.fc2.op.weight.data = state_dict["fc2.op.weight"]
-    # model.fc3.op.weight.data = state_dict["fc3.op.weight"]
-    print(f"Attack central acc: {CEval():.4f}")
-    # exit()
-
-    noise_size = 0
-    for m in model.modules():
-        if isinstance(m, SModule) or isinstance(m, NModule):
-            noise_size += m.op.weight.shape.numel()
-    
-    if not args.load_direction:
-        total_noise = torch.randn(args.noise_epoch, noise_size)
-        
-        w = w.reshape(1,-1) * -1
-        # print(((w ** 2).sum() / w.shape.numel()).sqrt().item())
-        total_noise = torch.cat([total_noise, w])
-        
-        # total_noise = total_noise * total_noise.abs()
-        scale = ((total_noise ** 2).sum(dim=-1)/len(total_noise[0])).sqrt().reshape(len(total_noise),1)
-        total_noise /= scale
-    else:
-        total_noise = torch.load(f"pretrained/{args.model}/directions.pt")
-        if len(total_noise) < args.noise_epoch:
-            raise Exception("Saved direction not enough")
-        else:
-            total_noise = total_noise[:args.noise_epoch]
-    model.to_first_only()
-
-    max_list = []
-    avg_list = []
-    acc_list = []
-    l2 = args.alpha
-
-    new_loader = []
-    for images, labels  in testloader:
-        images, labels = images.to(device), labels.to(device)
-        images = images.view(images.shape[0],-1)
-        o1 = model.fc1(images)
-        new_loader.append((o1, labels))
-    testloader = new_loader
-    model.fc1 = nn.Identity()
-
-    # for i in tqdm(range(len(total_noise))):
-    for i in range(len(total_noise)):
-        left = 0
-        model.clear_noise()
-        # model.set_noise(l2, 0.0)
-        for m in model.modules():
-            if isinstance(m, SModule) or isinstance(m, NModule):
-                this_size = m.op.weight.shape.numel()
-                m.noise.data = (total_noise[i, left:left+this_size].reshape(m.noise.shape) * l2).to(device)
-                # m.noise = m.noise.to(device)
-                left += this_size
-        # atk = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
-        acc = CEval()
-        acc_list.append(acc)
-        # print(f"This acc: {acc:.4f}")
-    print(f"L2: {l2:.1e}, Mean: {np.mean(acc_list):.4f}, Max: {np.max(acc_list):.4f}, Min: {np.min(acc_list):.4f}")
-    torch.save(acc_list, f"Circle_acc_list_{l2:.1e}.pt")
