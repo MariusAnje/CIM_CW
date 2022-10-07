@@ -45,6 +45,7 @@ class Attack(object):
         self._model_training = False
         self._batchnorm_training = False
         self._dropout_training = False
+        self.set_f(function="act")
 
     def forward(self, *input):
         r"""
@@ -328,6 +329,26 @@ class Attack(object):
             images = self._to_uint(images)
 
         return images
+    
+    def f_act(self, outputs, labels):
+        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
+
+        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
+        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
+
+        if self._targeted:
+            return torch.clamp((i-j), min=-self.kappa)
+        else:
+            return torch.clamp((j-i), min=-self.kappa)
+    
+    def f_cross(self, outputs, labels):
+        return -1e6 * nn.functional.cross_entropy(outputs, labels).sum()
+    
+    def set_f(self, function="act"):
+        if function == "act":
+            self.f = self.f_act
+        elif function == "cross":
+            self.f = self.f_cross
 
 
 class CW(Attack):
@@ -438,20 +459,8 @@ class CW(Attack):
     def atanh(self, x):
         return 0.5*torch.log((1+x)/(1-x))
 
-    # f-function in the paper
-    def f(self, outputs, labels):
-        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
-
-        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
-        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
-
-        if self._targeted:
-            return torch.clamp((i-j), min=-self.kappa)
-        else:
-            return torch.clamp((j-i), min=-self.kappa)
-
 class WCW(Attack):
-    def __init__(self, model, c=1e-4, kappa=0, steps=1000, lr=0.01, method="l2"):
+    def __init__(self, model, c=1e-4, kappa=0, steps=1000, lr=0.01, distance="l2"):
         super().__init__("CW", model)
         self.model = model
         self.c = c
@@ -459,7 +468,7 @@ class WCW(Attack):
         self.steps = steps
         self.lr = lr
         self._supported_mode = ['default', 'targeted']
-        self.method = method
+        self.distance = distance
         self.criteria = nn.CrossEntropyLoss()
     
     def get_noise(self):
@@ -542,13 +551,13 @@ class WCW(Attack):
         Overridden.
         """
         self.model.eval()
-        method = self.method
+        distance = self.distance
         w = self.get_noise()
 
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
         optimizer = optim.Adam(w, lr=self.lr)
 
-        if self.method == "loss":
+        if self.distance == "loss":
             self.collect_loss_ori(testloader)
 
         if use_tqdm:
@@ -570,13 +579,13 @@ class WCW(Attack):
                 else:
                     f_loss = self.f(outputs, labels).sum()
 
-                if method == "l2":
+                if distance == "l2":
                     metric = self.noise_l2()
-                elif method == "linf":
+                elif distance == "linf":
                     metric = self.noise_linf()
-                elif method == "max":
+                elif distance == "max":
                     metric = self.noise_max()
-                elif method == "loss":
+                elif distance == "loss":
                     metric = self.cal_loss_l2(i, images, labels)
                 else:
                     raise NotImplementedError
@@ -602,34 +611,22 @@ class WCW(Attack):
     def atanh(self, x):
         return 0.5*torch.log((1+x)/(1-x))
 
-    # f-function in the paper
-    def f(self, outputs, labels):
-        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
-
-        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
-        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
-
-        if self._targeted:
-            return torch.clamp((i-j), min=-self.kappa)
-        else:
-            return torch.clamp((j-i), min=-self.kappa)
-
 class RWCW(WCW):
-    def __init__(self, model, c=0.0001, kappa=0, steps=1000, lr=0.01, method="l2"):
-        super().__init__(model, c, kappa, steps, lr, method)
+    def __init__(self, model, c=0.0001, kappa=0, steps=1000, lr=0.01, distance="l2"):
+        super().__init__(model, c, kappa, steps, lr, distance)
     
     def forward(self, testloader):
         r"""
         Overridden.
         """
         self.model.eval()
-        method = self.method
+        distance = self.distance
         w = self.get_noise()
 
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
         optimizer = optim.Adam(w, lr=self.lr)
 
-        if self.method == "loss":
+        if self.distance == "loss":
             self.collect_loss_ori(testloader)
 
         # the_loader = tqdm(range(self.steps))
@@ -647,13 +644,13 @@ class RWCW(WCW):
                 else:
                     f_loss = self.f(outputs, labels).sum()
 
-                if method == "l2":
+                if distance == "l2":
                     metric = self.noise_l2()
-                elif method == "linf":
+                elif distance == "linf":
                     metric = self.noise_linf()
-                elif method == "max":
+                elif distance == "max":
                     metric = self.noise_max()
-                elif method == "loss":
+                elif distance == "loss":
                     metric = self.cal_loss_l2(i, images, labels)
                 else:
                     raise NotImplementedError
@@ -666,22 +663,10 @@ class RWCW(WCW):
                 optimizer.step()
             if isinstance(the_loader, tqdm):
                     the_loader.set_description(f"{running_cost/len(the_loader):.4f}")
-    
-    def f(self, outputs, labels):
-        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
-
-        i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
-        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
-
-        if self._targeted:
-            return torch.clamp((j-i), min=-self.kappa)
-        else:
-            return torch.clamp((i-j), min=-self.kappa)
 
 class PGD(WCW):
     def __init__(self, model, step_size=0.0001, steps=1000):
-        super().__init__(model, c=0, kappa=0, steps=steps, lr=step_size, method="l2")
-        self.f = nn.CrossEntropyLoss()
+        super().__init__(model, c=0, kappa=0, steps=steps, lr=step_size, distance="l2")
         self._targeted = False
     
     def forward(self, testloader, use_tqdm=False):
@@ -710,7 +695,7 @@ class PGD(WCW):
                 cost.backward()
             for m in self.model.modules():
                 if isinstance(m, NModule) or isinstance(m, SModule):
-                    m.noise.data += m.op.weight.grad.data.sign() * self.lr
+                    m.noise.data -= m.op.weight.grad.data.sign() * self.lr
                     
             optimizer.zero_grad()
             if isinstance(the_loader, tqdm):
@@ -719,7 +704,7 @@ class PGD(WCW):
         
 
 
-def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacker_class, model, init_c, steps, lr, method="l2", verbose=True):
+def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacker_class, model, init_c, steps, lr, distance="l2", verbose=True, function="act"):
     last_bad_c = 0
     final_accuracy = 0.0
     final_c = init_c
@@ -727,7 +712,8 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
     final_l2 = None
     for _ in range(search_runs):
         model.clear_noise()
-        attacker = attacker_class(model, c=init_c, kappa=0, steps=steps, lr=lr, method=method)
+        attacker = attacker_class(model, c=init_c, kappa=0, steps=steps, lr=lr, distance=distance)
+        attacker.set_f(function)
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
@@ -752,7 +738,7 @@ def binary_search_c(search_runs, acc_evaluator, dataloader, th_accuracy, attacke
                 init_c = (init_c + last_bad_c) / 2
     return final_accuracy, final_max, final_l2, final_c
 
-def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, attacker_class, model, init_c, steps, lr, method="l2", verbose=True, use_tqdm=False):
+def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, attacker_class, model, init_c, steps, lr, distance="l2", verbose=True, use_tqdm=False, function="act"):
     start_flag = True
     low = 0
     high = init_c
@@ -763,7 +749,8 @@ def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, at
     final_l2 = None
     for _ in range(search_runs):
         model.clear_noise()
-        attacker = attacker_class(model, c=mid, kappa=0, steps=steps, lr=lr, method=method)
+        attacker = attacker_class(model, c=mid, kappa=0, steps=steps, lr=lr, distance=distance)
+        attacker.set_f(function)
         # attacker.set_mode_targeted_random(n_classses=10)
         # attacker.set_mode_targeted_by_function(my_target)
         attacker.set_mode_default()
@@ -772,9 +759,9 @@ def binary_search_dist(search_runs, acc_evaluator, dataloader, target_metric, at
         this_max = attacker.noise_max().item()
         this_l2 = attacker.noise_l2().item()
         this_accuracy = acc_evaluator().item()
-        if attacker.method == "l2":
+        if attacker.distance == "l2":
             metric = attacker.noise_l2().item()
-        elif attacker.method == "max":
+        elif attacker.distance == "max":
             metric = attacker.noise_max().item()
         else:
             Exception("Metric not implemented")

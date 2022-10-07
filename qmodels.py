@@ -64,8 +64,8 @@ class QSLeNet(QSModel):
         self.conv1 = QSConv2d(N, 1, 6, 3, padding=1)
         self.conv2 = QSConv2d(N, 6, 16, 3, padding=1)
         # an affine operation: y = Wx + b
+        self.drop_feature = SFixedDropout(torch.Size([16 * 7 * 7]))
         self.fc1 = QSLinear(N, 16 * 7 * 7, 120)  # 6*6 from image dimension
-        self.drop_fc1 = SFixedDropout(torch.Size([120]))
         self.fc2 = QSLinear(N, 120, 84)
         self.fc3 = QSLinear(N, 84, 10)
         self.pool = SMaxpool2D(2)
@@ -85,11 +85,9 @@ class QSLeNet(QSModel):
         
         x = self.unpack_flattern(x)
         
-        self.xx = self.fc1(x)
-        # self.xx[1].retain_grad()
-        # self.xx[0].retain_grad()
-        # print(self.xx[1].grad)
-        x = self.drop_fc1(self.xx)
+        self.xx = x
+        x = self.drop_feature(x)
+        x = self.fc1(x)
         x = self.relu(x)
         
         x = self.fc2(x)

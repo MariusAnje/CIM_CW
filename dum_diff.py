@@ -174,9 +174,9 @@ def GetSecond():
     model.eval()
     model.clear_noise()
     optimizer.zero_grad()
-    act_grad = torch.zeros(16 * 7 * 7).to(device)
-    for images, labels in tqdm(secondloader):
-    # for images, labels in secondloader:
+    act_grad = torch.zeros(120).to(device)
+    # for images, labels in tqdm(secondloader):
+    for images, labels in secondloader:
         images, labels = images.to(device), labels.to(device)
         # images = images.view(-1, 784)
         outputs, outputsS = model(images)
@@ -187,31 +187,40 @@ def GetSecond():
         model.xx[1].grad.data.zero_()
     return act_grad
 
-def GetFirst():
+def GetDiff(model, noise_list):
     model.eval()
     model.clear_noise()
     optimizer.zero_grad()
-    act_grad = torch.zeros(16 * 7 * 7).to(device)
-    act_grad_each_layer = []
-    for i in range(len(act_grad)):
-    # for i in tqdm(range(len(act_grad))):
-        # for images, labels in tqdm(secondloader, leave=False):
-        for images, labels in secondloader:
+    act_diff = torch.zeros(16 * 7 * 7).to(device)
+
+    with torch.no_grad():
+        for images, labels in tqdm(secondloader, leave=False):
+        # for images, labels in secondloader:
             images, labels = images.to(device), labels.to(device)
             # images = images.view(-1, 784)
+            model.clear_noise()
             outputs = model(images)
-            # loss = (model.xx[:,i] ** 2).sum()
-            loss = (model.xx[:,i]).sum()
-            loss.backward()
-        layers = []
-        for m in model.modules():
-            if isinstance(m, nn.Conv2d):# or isinstance(m, nn.Linear):
-                act_grad[i] += m.weight.grad.data.abs().sum()
-                layers.append(m.weight.grad.data.abs().sum())
-                # act_grad[i] += m.weight.grad.data.sum()
-        act_grad_each_layer.append(layers)
-        optimizer.zero_grad()
-    return act_grad, act_grad_each_layer
+            ori_feature = model.xx.data
+            model = LoadNoise(model, noise_list)
+            outputs = model(images)
+            wor_feature = model.xx.data
+            act_diff += (ori_feature - wor_feature).abs().sum(axis=0)
+    return act_diff
+
+def SaveNoise(model):
+    noise_list = []
+    for m in model.modules():
+        if isinstance(m, SModule) or isinstance(m, NModule):
+            noise_list.append(m.noise.data)
+    return noise_list
+
+def LoadNoise(model, noise_list):
+    i = 0
+    for m in model.modules():
+        if isinstance(m, SModule) or isinstance(m, NModule):
+            m.noise.data += noise_list[i]
+            i += 1
+    return model
 
 
 if __name__ == "__main__":
@@ -446,28 +455,19 @@ if __name__ == "__main__":
     this_max = attacker.noise_max().item()
     this_l2 = attacker.noise_l2().item()
     print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+    noise_list = SaveNoise(model)
     model.clear_noise()
 
-    # act_grad, act_grad_each_layer = GetFirst()
-    # torch.save([act_grad, act_grad_each_layer], f"first_gradient_{header}_layers.pt")
-    # exit()
-    # act_grad = torch.load(f"first_gradient_{header}_no_square.pt", map_location=device)
-    # act_grad = torch.load(f"first_gradient_{header}_no_abs.pt", map_location=device)
-    act_grad, act_grad_each_layer = torch.load(f"first_gradient_{header}_layers.pt", map_location=device)
-    w, h = len(act_grad_each_layer), len(act_grad_each_layer[0])
-    act_layers = torch.zeros(h,w).to(device)
-    for i in range(w):
-        for j in range(h):
-            act_layers[j,i] = act_grad_each_layer[i][j].data
-    # act_grad = act_layers[0,:].abs()
-    act_grad = act_layers[1,:].abs()
-    print("Layer 0")
+    act_diff = GetDiff(model, noise_list)
+    # torch.save(act_diff, f"act_diff_{header}.pt")
 
-    indices = act_grad.argsort()[784 - int(784 * args.drop):]
+    model.clear_noise()
+    # act_grad = torch.load(f"first_gradient_{header}_no_square.pt", map_location=device)
+    # act_diff = torch.load(f"act_diff_{header}.pt", map_location=device)
+    indices = act_diff.argsort()[784 - int(784 * args.drop):]
     # indices = act_grad.argsort()[:int(784 * args.drop)]
-    new_mask = torch.ones_like(act_grad)
+    new_mask = torch.ones_like(act_diff)
     new_mask[indices] = 0
-    # print(new_mask.sum())
     print("AS")
     # new_mask = ((model.fc1.weightS.grad.data * (1 + model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
     # print("S + W2")
