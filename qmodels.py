@@ -119,6 +119,7 @@ class QCIFAR(QSModel):
         self.conv6 = QSConv2d(N, 256,256,3, padding=1)
         self.pool3 = SMaxpool2D(2,2)
         
+        self.drop_feature = SFixedDropout(torch.Size([256 * 4 * 4]))
         self.fc1 = QSLinear(N, 256 * 4 * 4, 1024)
         self.fc2 = QSLinear(N, 1024, 1024)
         self.fc3 = QSLinear(N, 1024, 10)
@@ -148,6 +149,8 @@ class QCIFAR(QSModel):
         
         x = self.unpack_flattern(x)
  
+        self.xx = x
+        x = self.drop_feature(x)
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)

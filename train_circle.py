@@ -363,14 +363,14 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
+    # optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9, weight_decay=5e-4)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch)
     args.train_epoch = 100
     # args.dev_var = 0.3
     # args.train_var = 0.3
-    args.train_var = 0.0
-    # args.verbose = True
+    # args.train_var = 0.0
+    args.verbose = True
     
-    print(model.fc1.op.weight.shape)
-    print(model.drop_fc1.mask.device)
     NTrain(args.train_epoch, header, args.train_var, 0.0, args.verbose)
     if args.train_var > 0:
         state_dict = torch.load(f"tmp_best_{header}.pt")

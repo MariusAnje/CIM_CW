@@ -14,6 +14,8 @@ class QSLinear(SModule):
         self.create_helper()
         self.function = SLinearFunction.apply
         self.N = N
+        nn.init.zeros_(self.op.bias)
+        nn.init.kaiming_normal_(self.op.weight)
         self.register_buffer('input_range', torch.zeros(1))
     
     def copy_N(self):
@@ -47,6 +49,8 @@ class QSConv2d(SModule):
         self.create_helper()
         self.function = SConv2dFunction.apply
         self.N = N
+        nn.init.zeros_(self.op.bias)
+        nn.init.kaiming_normal_(self.op.weight)
         self.register_buffer('input_range', torch.zeros(1))
 
     def copy_N(self):

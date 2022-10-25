@@ -187,11 +187,11 @@ def GetSecond():
         model.xx[1].grad.data.zero_()
     return act_grad
 
-def GetFirst():
+def GetFirst(size):
     model.eval()
     model.clear_noise()
     optimizer.zero_grad()
-    act_grad = torch.zeros(16 * 7 * 7).to(device)
+    act_grad = torch.zeros(size).to(device)
     act_grad_each_layer = []
     for i in range(len(act_grad)):
     # for i in tqdm(range(len(act_grad))):
@@ -244,6 +244,8 @@ if __name__ == "__main__":
             help='if to do the masking experiment')
     parser.add_argument('--model_path', action='store', default="./pretrained",
             help='where you put the pretrained model')
+    parser.add_argument('--first_path', action='store', default="./firsts",
+            help='where you put the pre-calculated first derivatives')
     parser.add_argument('--save_file', action='store',type=str2bool, default=True,
             help='if to save the files')
     parser.add_argument('--calc_S', action='store',type=str2bool, default=True,
@@ -375,8 +377,10 @@ if __name__ == "__main__":
         model = resnet.resnet18(num_classes = 200)
     elif args.model == "QLeNet":
         model = QSLeNet()
+        FEATURESIZE = 16 * 7 * 7
     elif args.model == "QCIFAR":
         model = QCIFAR()
+        FEATURESIZE = 256 * 4 * 4
     elif args.model == "QRes18":
         model = qresnet.resnet18(num_classes = 10)
     elif args.model == "QDENSE":
@@ -435,7 +439,11 @@ if __name__ == "__main__":
     # act_grad = GetSecond()
     model.to_first_only()
     print(f"No mask no noise: {CEval():.4f}")
-    
+    model.clear_noise()
+    performance = NEachEval(args.attack_dist / 2, 0.0)
+    print(f"No mask noise acc: {performance:.4f}")
+    model.clear_noise()
+
     model.to_first_only()
     steps = 200
     step_size = args.attack_dist / steps
@@ -448,22 +456,31 @@ if __name__ == "__main__":
     print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
     model.clear_noise()
 
-    # act_grad, act_grad_each_layer = GetFirst()
+    # act_grad, act_grad_each_layer = GetFirst(FEATURESIZE)
     # torch.save([act_grad, act_grad_each_layer], f"first_gradient_{header}_layers.pt")
     # exit()
     # act_grad = torch.load(f"first_gradient_{header}_no_square.pt", map_location=device)
     # act_grad = torch.load(f"first_gradient_{header}_no_abs.pt", map_location=device)
-    act_grad, act_grad_each_layer = torch.load(f"first_gradient_{header}_layers.pt", map_location=device)
+    act_grad, act_grad_each_layer = torch.load(os.path.join(args.first_path, args.model, f"first_gradient_{header}_layers.pt"), map_location=device)
     w, h = len(act_grad_each_layer), len(act_grad_each_layer[0])
     act_layers = torch.zeros(h,w).to(device)
     for i in range(w):
         for j in range(h):
             act_layers[j,i] = act_grad_each_layer[i][j].data
-    # act_grad = act_layers[0,:].abs()
-    act_grad = act_layers[1,:].abs()
-    print("Layer 0")
+    act_grad = act_layers.abs().sum(0)
+    # act_grad = act_layers[-2:,:].abs().sum(0)
 
-    indices = act_grad.argsort()[784 - int(784 * args.drop):]
+    act_mag = model.fc1.op.weight.data.pow(2).abs().sum(dim=0)
+    # act_grad = act_grad / (act_mag + 1e-8)
+    # act_grad = act_grad - (act_mag + 1e-8) * 1e7
+    # act_grad = act_mag
+
+    print(act_grad.shape)
+    # print("Layer last 2")
+    print("Layer whole")
+    
+    indices = act_grad.argsort()[FEATURESIZE - int(FEATURESIZE * args.drop):]
+    print(len(indices))
     # indices = act_grad.argsort()[:int(784 * args.drop)]
     new_mask = torch.ones_like(act_grad)
     new_mask[indices] = 0
@@ -481,6 +498,9 @@ if __name__ == "__main__":
     model.drop_feature.mask.data = new_mask
     model.drop_feature.scale = len(new_mask) / new_mask.sum().item()
     print(f"With mask no noise: {CEval():.4f}")
+    performance = NEachEval(args.attack_dist / 2, 0.0)
+    print(f"With mask noise acc: {performance:.4f}")
+    model.clear_noise()
     
     model.to_first_only()
     steps = 200
