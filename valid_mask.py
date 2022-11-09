@@ -276,6 +276,8 @@ if __name__ == "__main__":
             help='# of epochs of training')
     parser.add_argument('--drop', action='store',type=float, default=0.0,
             help='random dropout ratio')
+    parser.add_argument('--acc_th', action='store',type=float, default=0.0,
+            help='tolerable accuracy drop')
     args = parser.parse_args()
 
     print(args)
@@ -438,74 +440,153 @@ if __name__ == "__main__":
     model.de_select_drop()
     # act_grad = GetSecond()
     model.to_first_only()
-    print(f"No mask no noise: {CEval():.4f}")
-    model.clear_noise()
-    performance = NEachEval(args.attack_dist / 2, 0.0)
-    print(f"No mask noise acc: {performance:.4f}")
-    model.clear_noise()
+    ori_acc = CEval()
+    # print(f"No mask no noise: {CEval():.4f}")
+    # model.clear_noise()
+    # performance = NEachEval(args.attack_dist / 2, 0.0)
+    # print(f"No mask noise acc: {performance:.4f}")
+    # model.clear_noise()
 
-    model.to_first_only()
-    steps = 200
-    step_size = args.attack_dist / steps
-    attacker = PGD(model, step_size=step_size, steps=steps)
-    attacker.set_f(args.attack_function)
-    attacker(testloader, args.use_tqdm)
-    this_accuracy = CEval()
-    this_max = attacker.noise_max().item()
-    this_l2 = attacker.noise_l2().item()
-    print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
-    model.clear_noise()
+    # model.to_first_only()
+    # steps = 200
+    # step_size = args.attack_dist / steps
+    # attacker = PGD(model, step_size=step_size, steps=steps)
+    # attacker.set_f(args.attack_function)
+    # attacker(testloader, args.use_tqdm)
+    # this_accuracy = CEval()
+    # this_max = attacker.noise_max().item()
+    # this_l2 = attacker.noise_l2().item()
+    # print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+    # model.clear_noise()
 
     # act_grad, act_grad_each_layer = GetFirst(FEATURESIZE)
     # torch.save([act_grad, act_grad_each_layer], f"first_gradient_{header}_layers.pt")
     # exit()
     # act_grad = torch.load(f"first_gradient_{header}_no_square.pt", map_location=device)
     # act_grad = torch.load(f"first_gradient_{header}_no_abs.pt", map_location=device)
-    act_grad, act_grad_each_layer = torch.load(os.path.join(args.first_path, args.model, f"first_gradient_{header}_layers.pt"), map_location=device)
+    # act_grad, act_grad_each_layer = torch.load(os.path.join(args.first_path, args.model, f"first_gradient_{header}_layers.pt"), map_location=device)
+    act_grad, act_grad_each_layer = torch.load(os.path.join(args.first_path, args.model, f"old_model/first_gradient_{header}_layers.pt"), map_location=device)
     w, h = len(act_grad_each_layer), len(act_grad_each_layer[0])
     act_layers = torch.zeros(h,w).to(device)
     for i in range(w):
         for j in range(h):
             act_layers[j,i] = act_grad_each_layer[i][j].data
-    act_grad = act_layers.abs().sum(0)
-    # act_grad = act_layers[-2:,:].abs().sum(0)
+    # act_grad = act_layers[-1:,:].abs().sum(0)
+    act_grad = act_layers[:,:].abs().sum(0)
 
     act_mag = model.fc1.op.weight.data.pow(2).abs().sum(dim=0)
     # act_grad = act_grad / (act_mag + 1e-8)
     # act_grad = act_grad - (act_mag + 1e-8) * 1e7
     # act_grad = act_mag
 
-    print(act_grad.shape)
-    # print("Layer last 2")
+    # print(act_grad.shape)
+    # print("Layer last")
     print("Layer whole")
     
-    indices = act_grad.argsort()[FEATURESIZE - int(FEATURESIZE * args.drop):]
-    print(len(indices))
-    # indices = act_grad.argsort()[:int(784 * args.drop)]
-    new_mask = torch.ones_like(act_grad)
-    new_mask[indices] = 0
-    # print(new_mask.sum())
-    print("AS")
-    # new_mask = ((model.fc1.weightS.grad.data * (1 + model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
-    # print("S + W2")
-    # new_mask = ((model.fc1.weightS.grad.data).sum(axis=1).argsort() >= 12)
-    # print("S")
-    # new_mask = ((model.fc1.weightS.grad.data * (model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
-    # print("S * W2")
-    # new_mask = ((model.fc1.op.weight.data ** 2).sum(axis=1).argsort() >= 12)
-    # print("W2")
-    # new_mask = loaded_mask
-    model.drop_feature.mask.data = new_mask
-    model.drop_feature.scale = len(new_mask) / new_mask.sum().item()
-    print(f"With mask no noise: {CEval():.4f}")
-    performance = NEachEval(args.attack_dist / 2, 0.0)
+    # indices = act_grad.argsort()[FEATURESIZE - int(FEATURESIZE * args.drop):]
+    th = 0
+    act_grad = act_grad / act_grad.abs().max()
+    act_mag = act_mag / act_mag.abs().max()
+    i_sum = act_grad * (act_mag > th).to(torch.float32)
+    ws_new = act_mag + ((act_mag <= th).to(torch.float32) * 20)
+    # d_sum = i_sum - (ws_new - 0.5).abs()
+    # d_sum = i_sum - (ws_new - 0.6).abs() * 2
+    # num = int(FEATURESIZE * args.drop)
+    # if num == 0:
+    #     indices = []
+    # else:
+    #     indices = d_sum.argsort()[-num:]
+    # # indices = ((act_grad > 0.3e8).to(torch.float32) * (act_mag < 13.3).to(torch.float32)).to(torch.bool)
+    # # print(indices.sum())
+    # # indices = act_grad.argsort()[:int(784 * args.drop)]
+    # new_mask = torch.ones_like(act_grad)
+    # new_mask[indices] = 0
+    # # print(new_mask.sum())
+    # print("AS")
+    # # new_mask = ((model.fc1.weightS.grad.data * (1 + model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
+    # # print("S + W2")
+    # # new_mask = ((model.fc1.weightS.grad.data).sum(axis=1).argsort() >= 12)
+    # # print("S")
+    # # new_mask = ((model.fc1.weightS.grad.data * (model.fc1.op.weight.data ** 2)).sum(axis=1).argsort() >= 12)
+    # # print("S * W2")
+    # # new_mask = ((model.fc1.op.weight.data ** 2).sum(axis=1).argsort() >= 12)
+    # # print("W2")
+    # # new_mask = loaded_mask
+    # model.drop_feature.mask.data = new_mask
+    # model.drop_feature.scale = len(new_mask) / new_mask.sum().item()
+
+    if args.acc_th != 0:
+        mid = args.drop
+        high = 1.0
+        low = 0.0
+        for i in range(20):
+            d_sum = i_sum - (ws_new - 0.5).abs() * 0
+            num = int(np.round(FEATURESIZE * mid))
+            if num == 0:
+                indices = []
+            else:
+                indices = d_sum.argsort()[-num:]
+            new_mask = torch.ones_like(act_grad)
+            new_mask[indices] = 0
+            # print("AS")
+            model.drop_feature.mask.data = new_mask
+            model.drop_feature.scale = len(new_mask) / new_mask.sum().item()
+            crr_acc = CEval()
+            diff = ori_acc - crr_acc
+            if np.abs(diff - args.acc_th) > 0.003:
+                # print(f"{mid:.4f}, {diff:.4f} --> With mask no noise: {crr_acc:.4f}")
+                if diff > args.acc_th:
+                    high = mid
+                else:
+                    low = mid
+                mid = (low + high) / 2
+            else:
+                print(f"Final Dropout: {mid:.4f}")
+                print(f"With mask no noise: {crr_acc:.4f}")
+                break
+    else:
+        # d_sum = i_sum - (ws_new - 0.5).abs() * 0
+        alpha = 0
+        power = 6
+        print(f"alpha: {alpha}, power: {power}")
+        d_sum = i_sum - alpha * (ws_new) ** power
+        num = int(np.round(FEATURESIZE * args.drop))
+        if num == 0:
+            indices = []
+        else:
+            indices = d_sum.argsort()[-num:]
+        # left_th = 0.3558 # DR_0.06 -- H1
+        # left_th = 0.22   # Dr_0.10 -- H1
+        # left_th = 0.3511 # Dr_0.06 -- H2
+        # left_th = 0.2778 # Dr_0.10 -- H2
+        # left_th = 0.2507 # Dr_0.12 -- H2
+        # left_th = 0.2156 # Dr_0.15 -- H2
+        # left_th = 0.3057 # Dr_0.06 -- H3
+        # left_th = 0.2764 # Dr_0.08 -- H3
+        # left_th = 0.1748 # Dr_0.10 -- H3
+        # left_th = 0.1417 # Dr_0.12 -- H3
+        # left_th = 0.103 # Dr_0.15 -- H3
+        # up_th = 0.80
+        # print(f"left: {left_th}, up: {up_th}")
+        # indices = ((i_sum > left_th).to(torch.float32) * (ws_new < up_th).to(torch.float32)).to(torch.bool)
+        # indices = ((i_sum > 100).to(torch.float32) * (ws_new < up_th).to(torch.float32)).to(torch.bool)
+        new_mask = torch.ones_like(act_grad)
+        new_mask[indices] = 0
+        # print("AS")
+        model.drop_feature.mask.data = new_mask
+        model.drop_feature.scale = len(new_mask) / new_mask.sum().item()
+        crr_acc = CEval()
+        print(f"With mask no noise: {crr_acc:.4f}")
+    # performance = NEachEval(args.attack_dist / 2, 0.0)
+    # performance = NEachEval(0.1, 0.0)
+    performance = 0
     print(f"With mask noise acc: {performance:.4f}")
     model.clear_noise()
     
     model.to_first_only()
     steps = 200
     step_size = args.attack_dist / steps
-    attacker = PGD(model, step_size=step_size, steps=steps)
+    attacker = PGD(model, args.attack_dist, step_size=step_size, steps=steps * 10)
     attacker.set_f(args.attack_function)
     attacker(testloader, args.use_tqdm)
     this_accuracy = CEval()

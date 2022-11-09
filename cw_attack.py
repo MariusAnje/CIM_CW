@@ -665,9 +665,11 @@ class RWCW(WCW):
                     the_loader.set_description(f"{running_cost/len(the_loader):.4f}")
 
 class PGD(WCW):
-    def __init__(self, model, step_size=0.0001, steps=1000):
+    def __init__(self, model, aim, step_size=0.0001, steps=1000):
         super().__init__(model, c=0, kappa=0, steps=steps, lr=step_size, distance="l2")
         self._targeted = False
+        self._max = 0
+        self._aim = aim
     
     def forward(self, testloader, use_tqdm=False):
         r"""
@@ -696,10 +698,13 @@ class PGD(WCW):
             for m in self.model.modules():
                 if isinstance(m, NModule) or isinstance(m, SModule):
                     m.noise.data -= m.op.weight.grad.data.sign() * self.lr
+                    self._max = max(m.noise.data.max().item(), self._max)
                     
             optimizer.zero_grad()
             if isinstance(the_loader, tqdm):
-                the_loader.set_description(f"f: {running_cost/len(testloader):.4f}")
+                the_loader.set_description(f"f: {running_cost/len(testloader):.4f}, max: {self._max:.4f}")
+            if self._max >= self._aim:
+                break
     
         
 
