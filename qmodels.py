@@ -64,6 +64,7 @@ class QSLeNet(QSModel):
         self.conv1 = QSConv2d(N, 1, 6, 3, padding=1)
         self.conv2 = QSConv2d(N, 6, 16, 3, padding=1)
         # an affine operation: y = Wx + b
+        self.dropout = nn.Dropout()
         self.drop_feature = SFixedDropout(torch.Size([16 * 7 * 7]))
         self.fc1 = QSLinear(N, 16 * 7 * 7, 120)  # 6*6 from image dimension
         self.fc2 = QSLinear(N, 120, 84)
@@ -86,6 +87,7 @@ class QSLeNet(QSModel):
         x = self.unpack_flattern(x)
         
         self.xx = x
+        x = self.dropout(x)
         x = self.drop_feature(x)
         x = self.fc1(x)
         x = self.relu(x)

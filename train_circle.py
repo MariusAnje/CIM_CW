@@ -128,8 +128,8 @@ def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-        # test_acc = NEachEval(dev_var, write_var)
-        test_acc = CEval()
+        test_acc = NEachEval(dev_var, write_var)
+        # test_acc = CEval()
         if test_acc > best_acc:
             best_acc = test_acc
             torch.save(model.state_dict(), f"tmp_best_{header}.pt")
