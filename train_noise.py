@@ -135,6 +135,32 @@ def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
         scheduler.step()
 
+def ATrain(epochs, header, dev_var=0.0, verbose=False):
+    best_acc = 0.0
+    for i in range(epochs):
+        model.train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            model.clear_noise()
+            model.set_noise_act(dev_var)
+            optimizer.zero_grad()
+            images, labels = images.to(device), labels.to(device)
+            # images = images.view(-1, 784)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        # test_acc = NEachEval(dev_var, write_var)
+        test_acc = CEval()
+        if test_acc > best_acc:
+            best_acc = test_acc
+            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
+        if verbose:
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
+        scheduler.step()
+
 def str2bool(a):
     if a == "True":
         return True
@@ -342,6 +368,9 @@ if __name__ == "__main__":
         NotImplementedError
 
     model.to(device)
+    for m in model.modules():
+        if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
+            m.device = device
     model.push_S_device()
     model.clear_noise()
     model.clear_mask()
@@ -352,7 +381,9 @@ if __name__ == "__main__":
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
     
     model.to_first_only()
-    NTrain(args.train_epoch, header, dev_var=args.train_var, write_var=0.0, verbose=args.verbose)
+    model.de_select_drop()
+    # NTrain(args.train_epoch, header, dev_var=args.train_var, write_var=0.0, verbose=args.verbose)
+    ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
@@ -366,7 +397,7 @@ if __name__ == "__main__":
     model.to_first_only()
     performance = NEachEval(args.dev_var, 0.0)
     print(f"No mask noise acc: {performance:.4f}")
-    mean_attack, w = attack_wcw(model, testloader, verbose=True)
+    # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
 
     parent_path = args.model_path

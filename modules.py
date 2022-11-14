@@ -359,13 +359,13 @@ class SAct(nn.Module):
         return new
     
     def clear_noise(self):
-        self.noise = torch.zeros(self.size)
+        self.noise = torch.zeros_like(self.noise)
     
     def clear_mask(self):
-        self.mask = torch.ones(self.size)
+        self.mask = torch.ones_like(self.mask)
     
     def set_noise(self, var):
-        self.noise = torch.randn(self.size) * var
+        self.noise = torch.randn_like(self.noise) * var
         
     def push_S_device(self, device):
         self.mask = self.mask.to(device)
@@ -392,13 +392,13 @@ class NAct(nn.Module):
         return new
     
     def clear_noise(self):
-        self.noise = torch.zeros(self.size)
+        self.noise = torch.zeros_like(self.noise)
     
     def clear_mask(self):
-        self.mask = torch.ones(self.size)
+        self.mask = torch.ones_like(self.mask)
     
     def set_noise(self, var):
-        self.noise = torch.randn(self.size) * var
+        self.noise = torch.randn_like(self.noise) * var
         
     def push_S_device(self, device):
         self.mask = self.mask.to(device)
@@ -440,6 +440,11 @@ class NModel(nn.Module):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):
                 mo.set_noise(dev_var, write_var, N, m)
+    
+    def set_noise_act(self, dev_var):
+        for mo in self.modules():
+            if isinstance(mo, NAct) or isinstance(mo, SAct):
+                mo.set_noise(dev_var)
    
     def set_add(self, dev_var, write_var, N=8, m=1):
         for mo in self.modules():
@@ -501,7 +506,7 @@ class SModel(nn.Module):
         for m in self.modules():
             if isinstance(m, SModule) or isinstance(m, NModule):
                 m.push_S_device()
-                device = m.weightS.device
+                device = m.op.weight.device
             if isinstance(m, SAct) or isinstance(m, NAct):
                 m.push_S_device(device)
 
@@ -554,6 +559,11 @@ class SModel(nn.Module):
         for mo in self.modules():
             if isinstance(mo, SModule) or isinstance(mo, NModule):
                 mo.set_noise(dev_var, write_var, N, m)
+    
+    def set_noise_act(self, dev_var):
+        for mo in self.modules():
+            if isinstance(mo, NAct) or isinstance(mo, SAct):
+                mo.set_noise(dev_var)
     
     def set_add(self, dev_var, write_var, N=8, m=1):
         for mo in self.modules():
