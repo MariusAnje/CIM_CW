@@ -231,6 +231,13 @@ class Attack(object):
         if return_verbose:
             return rob_acc, l2, elapsed_time
 
+    def save_noise(self, path):
+        noise = []
+        for m in self.model.modules():
+            if isinstance(m, NModule) or isinstance(m, SModule):
+                noise.append(m.noise)
+        torch.save(noise, path)
+    
     def _save_print(self, progress, rob_acc, l2, elapsed_time, end):
         print('- Save progress: %2.2f %% / Robust accuracy: %2.2f %% / L2: %1.5f (%2.3f it/s) \t' \
               % (progress, rob_acc, l2, elapsed_time), end=end)
@@ -671,14 +678,15 @@ class PGD(WCW):
         self._max = 0
         self._aim = aim
     
-    def forward(self, testloader, use_tqdm=False):
+    def forward(self, testloader, use_tqdm=False, save=None, path=None):
         r"""
         Overridden.
         """
         self.model.eval()
 
         # optimizer = optim.Adam(w, lr=self.lr, weight_decay=self.c)
-        optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        # optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
 
         if use_tqdm:
             the_loader = tqdm(range(self.steps))
@@ -705,6 +713,10 @@ class PGD(WCW):
                 the_loader.set_description(f"f: {running_cost/len(testloader):.4f}, max: {self._max:.4f}")
             if self._max >= self._aim:
                 break
+
+            if save is not None:
+                if step % save == save - 1: 
+                    self.save_noise(f"{path}_{step}.pt")
     
         
 
