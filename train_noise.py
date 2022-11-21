@@ -109,6 +109,26 @@ def NEachEval(dev_var, write_var):
             total += len(correction)
     return (correct/total).cpu().numpy()
 
+def AEachEval(dev_var):
+    model.eval()
+    total = 0
+    correct = 0
+    model.clear_noise()
+    with torch.no_grad():
+        for images, labels in testloader:
+            model.clear_noise()
+            model.set_noise_act(dev_var)
+            images, labels = images.to(device), labels.to(device)
+            # images = images.view(-1, 784)
+            outputs = model(images)
+            if len(outputs) == 2:
+                outputs = outputs[0]
+            predictions = outputs.argmax(dim=1)
+            correction = predictions == labels
+            correct += correction.sum()
+            total += len(correction)
+    return (correct/total).cpu().numpy()
+
 def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
     best_acc = 0.0
     for i in range(epochs):
@@ -153,7 +173,7 @@ def ATrain(epochs, header, dev_var=0.0, verbose=False):
             optimizer.step()
             running_loss += loss.item()
         # test_acc = NEachEval(dev_var, write_var)
-        test_acc = CEval()
+        test_acc = AEachEval(dev_var)
         if test_acc > best_acc:
             best_acc = test_acc
             torch.save(model.state_dict(), f"tmp_best_{header}.pt")
@@ -382,15 +402,17 @@ if __name__ == "__main__":
     
     model.to_first_only()
     model.de_select_drop()
-    # NTrain(args.train_epoch, header, dev_var=args.train_var, write_var=0.0, verbose=args.verbose)
-    ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
+    NTrain(args.train_epoch, header, dev_var=args.train_var, write_var=0.0, verbose=args.verbose)
+    # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
     model.from_first_back_second()
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.train_var}.pt")
     model.clear_noise()
+    model.to_first_only()
     print(f"No mask no noise: {CEval():.4f}")
+    model.from_first_back_second()
     state_dict = torch.load(f"saved_B_{header}_noise_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
