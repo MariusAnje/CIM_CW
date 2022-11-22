@@ -64,7 +64,7 @@ class QSLeNet(QSModel):
         self.conv1 = QSConv2d(N, 1, 6, 3, padding=1)
         self.conv2 = QSConv2d(N, 6, 16, 3, padding=1)
         # an affine operation: y = Wx + b
-        self.dropout = nn.Dropout(p=0.05)
+        self.dropout = nn.Dropout(p=0.5)
         # self.dropout = nn.Identity()
         self.noise_act = SAct(16 * 7 * 7)
         self.drop_feature = SFixedDropout(torch.Size([16 * 7 * 7]))
@@ -81,12 +81,12 @@ class QSLeNet(QSModel):
         x = self.conv1(x)
         x = self.relu(x)
         x = self.pool(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         
         x = self.conv2(x)
         x = self.relu(x)
         x = self.pool(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         
         x = self.unpack_flattern(x)
         
@@ -96,7 +96,7 @@ class QSLeNet(QSModel):
         x = self.drop_feature(x)
         x = self.fc1(x)
         x = self.relu(x)
-        x = self.dropout(x)
+        # x = self.dropout(x)
         
         x = self.fc2(x)
         x = self.relu(x)
