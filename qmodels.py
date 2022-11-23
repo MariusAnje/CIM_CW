@@ -91,7 +91,7 @@ class QSLeNet(QSModel):
         x = self.unpack_flattern(x)
         
         self.xx = x
-        x = self.dropout(x)
+        # x = self.dropout(x)
         # x = self.noise_act(x)
         x = self.drop_feature(x)
         x = self.fc1(x)
