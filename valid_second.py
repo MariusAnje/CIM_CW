@@ -175,16 +175,17 @@ def GetSecond():
     model.clear_noise()
     optimizer.zero_grad()
     act_grad = torch.zeros(16 * 7 * 7).to(device)
-    for images, labels in tqdm(secondloader):
-    # for images, labels in secondloader:
+    # for images, labels in tqdm(secondloader):
+    for images, labels in secondloader:
         images, labels = images.to(device), labels.to(device)
         # images = images.view(-1, 784)
         outputs, outputsS = model(images)
         loss = criteria(outputs, outputsS,labels)
-        model.xx[1].retain_grad()
+        # model.xx[1].retain_grad()
         loss.backward()
-        act_grad += model.xx[1].grad.data.sum(axis=0)
-        model.xx[1].grad.data.zero_()
+        # act_grad += model.xx[1].grad.data.sum(axis=0)
+        # model.xx[1].grad.data.zero_()
+        # optimizer.zero_grad()
     return act_grad
 
 def GetFirst(size):
@@ -446,13 +447,16 @@ if __name__ == "__main__":
     # model.to_first_only()
     ori_acc = CEval()
     GetSecond()
+    # second = []
+    # for m in model.modules():
+    #     if isinstance(m, SModule) or isinstance(m, NModule):
+    #         second.append(m.weightS.grad.data)
+    #         print(m.weightS.grad.data.sum().item())
+    # torch.save(second, f"second_gradient_{header}_layers.pt")
     th = model.calc_sail_th(args.mask_p, "SM", args.alpha) # Calculate threshold of weight sensitivity according to the portion
     model.set_mask_sail(th, "th", "SM", args.alpha)
     
     crr_acc = CEval()
-    for m in model.modules():
-        if isinstance(m, SModule) or isinstance(m, NModule):
-            print(m.mask)
     print(f"With mask no noise: {crr_acc:.4f}")
     # performance = 0
     # print(f"With mask noise acc: {performance:.4f}")
