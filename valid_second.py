@@ -458,8 +458,8 @@ if __name__ == "__main__":
     
     crr_acc = CEval()
     print(f"With mask no noise: {crr_acc:.4f}")
-    # performance = 0
-    # print(f"With mask noise acc: {performance:.4f}")
+    performance = 0
+    print(f"With mask noise acc: {performance:.4f}")
     model.clear_noise()
     
     model.to_first_only()
@@ -472,5 +472,5 @@ if __name__ == "__main__":
     this_accuracy = CEval()
     this_max = attacker.noise_max().item()
     this_l2 = attacker.noise_l2().item()
-    print(f"PGD acc: {this_accuracy:.4f}")
+    print(f"PGD Results --> acc: {this_accuracy:.4f}")
     model.clear_noise()
