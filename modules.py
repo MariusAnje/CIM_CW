@@ -35,6 +35,14 @@ class SModule(nn.Module):
 
         self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
     
+    def set_pepper(self, dev_var, rate):
+
+        scale = self.op.weight.abs().max().item()
+        rate_mat = torch.ones_like(self.noise).to(self.op.weight.device) * rate
+        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * dev_var * scale
+
+        self.noise = noise_dev
+    
     def set_add(self, dev_var, write_var, N, m):
         # N: number of bits per weight, m: number of bits per device
         # Dev_var: device variation before write and verify
@@ -216,6 +224,14 @@ class NModule(nn.Module):
         noise_write = noise_write.to(self.op.weight.device) * scale
 
         self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
+    
+    def set_pepper(self, dev_var, rate):
+
+        scale = self.op.weight.abs().max().item()
+        rate_mat = torch.ones_like(self.noise).to(self.op.weight.device) * rate
+        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * dev_var * scale
+
+        self.noise = noise_dev
     
     def clear_noise(self):
         self.noise = torch.zeros_like(self.op.weight)
@@ -441,6 +457,11 @@ class NModel(nn.Module):
             if isinstance(mo, NModule) or isinstance(mo, SModule):
                 mo.set_noise(dev_var, write_var, N, m)
     
+    def set_pepper(self, dev_var, rate):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_pepper(dev_var, rate)
+
     def set_noise_act(self, dev_var):
         for mo in self.modules():
             if isinstance(mo, NAct) or isinstance(mo, SAct):
@@ -559,6 +580,12 @@ class SModel(nn.Module):
         for mo in self.modules():
             if isinstance(mo, SModule) or isinstance(mo, NModule):
                 mo.set_noise(dev_var, write_var, N, m)
+    
+    def set_pepper(self, dev_var, rate):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_pepper(dev_var, rate)
+
     
     def set_noise_act(self, dev_var):
         for mo in self.modules():
