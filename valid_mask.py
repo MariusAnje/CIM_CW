@@ -460,13 +460,13 @@ if __name__ == "__main__":
 
     # act_grad, act_grad_each_layer = GetFirst(FEATURESIZE)
     # torch.save([act_grad, act_grad_each_layer], f"first_gradient_{header}_layers.pt")
-    act_grad = GetSecond()
-    second_each_layer = []
-    for m in model.modules():
-        if isinstance(m, SModule) or isinstance(m, NModule):
-            second_each_layer.append(m.weightS.detach())
-    torch.save([act_grad, second_each_layer], f"second_gradient_{header}_layers.pt")
-    exit()
+    # act_grad = GetSecond()
+    # second_each_layer = []
+    # for m in model.modules():
+    #     if isinstance(m, SModule) or isinstance(m, NModule):
+    #         second_each_layer.append(m.weightS.detach())
+    # torch.save([act_grad, second_each_layer], f"second_gradient_{header}_layers.pt")
+    
     # act_grad = torch.load(f"first_gradient_{header}_no_square.pt", map_location=device)
     # act_grad = torch.load(f"first_gradient_{header}_no_abs.pt", map_location=device)
     # act_grad, act_grad_each_layer = torch.load(os.path.join(args.first_path, args.model, f"first_gradient_{header}_layers.pt"), map_location=device)

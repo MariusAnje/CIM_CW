@@ -39,7 +39,8 @@ class SModule(nn.Module):
 
         scale = self.op.weight.abs().max().item()
         rate_mat = torch.ones_like(self.noise).to(self.op.weight.device) * rate
-        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * dev_var * scale
+        sign_bit = torch.randn_like(self.noise).sign().to(self.op.weight.device)
+        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * sign_bit * dev_var * scale
 
         self.noise = noise_dev
     
@@ -229,7 +230,8 @@ class NModule(nn.Module):
 
         scale = self.op.weight.abs().max().item()
         rate_mat = torch.ones_like(self.noise).to(self.op.weight.device) * rate
-        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * dev_var * scale
+        sign_bit = torch.randn_like(self.noise).sign().to(self.op.weight.device)
+        noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * sign_bit * dev_var * scale
 
         self.noise = noise_dev
     
