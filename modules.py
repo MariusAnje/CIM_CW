@@ -238,6 +238,9 @@ class NModule(nn.Module):
     def clear_noise(self):
         self.noise = torch.zeros_like(self.op.weight)
     
+    def clear_mask(self):
+        self.mask = torch.ones_like(self.op.weight)
+    
     def push_S_device(self):
         self.mask = self.mask.to(self.op.weight.device)
         self.noise = self.noise.to(self.op.weight.device)
