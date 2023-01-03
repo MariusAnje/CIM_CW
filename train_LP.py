@@ -30,7 +30,8 @@ def LPLoss(model, lmd):
             w = m.weight
             shape1, shape2 = w.size(-2), w.size(-1)
             w = w.view(-1, shape1, shape2)
-            loss += (w.swapaxes(-1,-2).bmm(w) - lmd * torch.eye(shape2).to(w.device)).pow(2).sum()
+            # loss += (w.swapaxes(-1,-2).bmm(w) - lmd * torch.eye(shape2).to(w.device)).pow(2).sum()
+            loss += (w.bmm(w.swapaxes(-1,-2)) - lmd * torch.eye(shape1).to(w.device)).pow(2).sum()
     return loss
             
 
