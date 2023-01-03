@@ -26,12 +26,12 @@ import torch.optim as optim
 def LPLoss(model, lmd):
     loss = 0
     for m in model.modules():
-        if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+        if isinstance(m, nn.Linear):
             w = m.weight
-            shape1, shape2 = w.size(-2), w.size(-1)
-            w = w.view(-1, shape1, shape2)
-            # loss += (w.swapaxes(-1,-2).bmm(w) - lmd * torch.eye(shape2).to(w.device)).pow(2).sum()
-            loss += (w.bmm(w.swapaxes(-1,-2)) - lmd * torch.eye(shape1).to(w.device)).pow(2).sum()
+            shape_out = w.size(0)
+            w = w.view(shape_out, -1)
+            loss += (w.mm(w.t()) - lmd * torch.eye(shape_out).to(w.device)).pow(2).sum()
+
     return loss
             
 
