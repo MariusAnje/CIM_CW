@@ -48,6 +48,17 @@ class SModule(nn.Module):
         scale = self.op.weight.abs().max().item()
         self.noise = (torch.rand_like(self.noise) - 0.5) * 2 * dev_var * scale
     
+    def set_SPU(self, s_rate, p_rate, dev_var):
+        assert s_rate + p_rate < 1
+        scale = self.op.weight.abs().max().item()
+        self.noise = (torch.rand_like(self.noise) - 0.5) * 2
+        rate_mat = torch.rand_like(self.noise)
+        zero_mat = rate_mat < p_rate
+        th_mat = rate_mat > (1 - s_rate)
+        self.noise[zero_mat] = 0
+        self.noise[th_mat].data = self.noise[th_mat].data.sign()
+        self.noise = self.noise * scale * dev_var
+    
     def set_add(self, dev_var, write_var, N, m):
         # N: number of bits per weight, m: number of bits per device
         # Dev_var: device variation before write and verify
@@ -242,6 +253,17 @@ class NModule(nn.Module):
     def set_uni(self, dev_var):
         scale = self.op.weight.abs().max().item()
         self.noise = (torch.rand_like(self.noise) - 0.5) * 2 * dev_var * scale
+    
+    def set_SPU(self, s_rate, p_rate, dev_var):
+        assert s_rate + p_rate < 1
+        scale = self.op.weight.abs().max().item()
+        self.noise = (torch.rand_like(self.noise) - 0.5) * 2
+        rate_mat = torch.rand_like(self.noise)
+        zero_mat = rate_mat < p_rate
+        th_mat = rate_mat > (1 - s_rate)
+        self.noise[zero_mat] = 0
+        self.noise[th_mat] = self.noise[th_mat].data.sign()
+        self.noise = self.noise * scale * dev_var
     
     def clear_noise(self):
         self.noise = torch.zeros_like(self.op.weight)
@@ -479,6 +501,11 @@ class NModel(nn.Module):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):
                 mo.set_uni(dev_var)
+    
+    def set_SPU(self, s_rate, p_rate, dev_var):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_SPU(s_rate, p_rate, dev_var)
 
     def set_noise_act(self, dev_var):
         for mo in self.modules():
@@ -608,6 +635,11 @@ class SModel(nn.Module):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):
                 mo.set_uni(dev_var)
+    
+    def set_SPU(self, s_rate, p_rate, dev_var):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_SPU(s_rate, p_rate, dev_var)
     
     def set_noise_act(self, dev_var):
         for mo in self.modules():

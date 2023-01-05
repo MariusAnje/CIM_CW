@@ -338,10 +338,13 @@ class Attack(object):
         return images
     
     def f_act(self, outputs, labels):
-        one_hot_labels = torch.eye(len(outputs[0]))[labels].to(self.device)
+        one_hot_labels = torch.eye(len(outputs[0]))[labels.cpu()].to(self.device)
 
         i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
-        j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
+        # j = torch.masked_select(outputs, one_hot_labels.bool()) # get the largest logit
+        j = outputs[one_hot_labels.bool().cpu()]
+        # print(outputs.shape)
+        # print(one_hot_labels.bool().cpu().shape)
 
         if self._targeted:
             return torch.clamp((i-j), min=-self.kappa)
