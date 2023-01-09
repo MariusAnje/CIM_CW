@@ -6,6 +6,68 @@ from torch.nn.modules.pooling import MaxPool2d
 from Functions import SLinearFunction, SConv2dFunction, SMSEFunction, SCrossEntropyLossFunction, SBatchNorm2dFunction, TimesFunction, SDropout
 import numpy as np
 
+def set_noise(self, dev_var, write_var, N, m):
+    # N: number of bits per weight, m: number of bits per device
+    # Dev_var: device variation before write and verify
+    # write_var: device variation after write and verity
+    scale = self.op.weight.abs().max().item()
+    noise_dev = torch.zeros_like(self.noise).to(self.op.weight.device)
+    noise_write = torch.zeros_like(self.noise).to(self.op.weight.device)
+    for i in range(1, N//m + 1):
+        if dev_var != 0:
+            noise_dev   += (torch.normal(mean=0., std=dev_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
+        if write_var != 0:
+            noise_write += (torch.normal(mean=0., std=write_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
+    noise_dev = noise_dev.to(self.op.weight.device) * scale
+    noise_write = noise_write.to(self.op.weight.device) * scale
+
+    self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
+
+def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write_var=0, **kwargs):
+    if   noise_type == "Gaussian":
+        set_noise(self, dev_var, write_var, kwargs["N"], kwargs["m"])
+    elif noise_type == "pepper":
+        set_pepper(self, dev_var, rate_max)
+    elif noise_type == "uni":
+        set_uni(self, dev_var)
+    elif noise_type == "SPU":
+        set_SPU(self, rate_max, rate_zero, dev_var)
+    elif noise_type == "SG":
+        set_SG(self, rate_max, dev_var)
+
+def set_pepper(self, dev_var, rate):
+
+    scale = self.op.weight.abs().max().item()
+    rate_mat = torch.ones_like(self.noise).to(self.op.weight.device) * rate
+    sign_bit = torch.randn_like(self.noise).sign().to(self.op.weight.device)
+    noise_dev = torch.bernoulli(rate_mat).to(self.op.weight.device) * sign_bit * dev_var * scale
+
+    self.noise = noise_dev
+
+def set_uni(self, dev_var):
+    scale = self.op.weight.abs().max().item()
+    self.noise = (torch.rand_like(self.noise) - 0.5) * 2 * dev_var * scale
+
+def set_SPU(self, s_rate, p_rate, dev_var):
+    assert s_rate + p_rate < 1
+    scale = self.op.weight.abs().max().item()
+    self.noise = (torch.rand_like(self.noise) - 0.5) * 2
+    rate_mat = torch.rand_like(self.noise)
+    zero_mat = rate_mat < p_rate
+    th_mat = rate_mat > (1 - s_rate)
+    self.noise[zero_mat] = 0
+    self.noise[th_mat].data = self.noise[th_mat].data.sign()
+    self.noise = self.noise * scale * dev_var
+
+def set_SG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    self.noise = torch.randn_like(self.noise)
+    rate_mat = torch.rand_like(self.noise)
+    th_mat = rate_mat < s_rate
+    self.noise[th_mat] = self.noise[th_mat].data.sign() * 3
+    self.noise = self.noise * scale * dev_var
+
+
 class SModule(nn.Module):
     def __init__(self):
         super().__init__()
@@ -35,6 +97,9 @@ class SModule(nn.Module):
 
         self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
     
+    def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write_var=0, **kwargs):
+        set_noise_multiple(self, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+    
     def set_pepper(self, dev_var, rate):
 
         scale = self.op.weight.abs().max().item()
@@ -57,6 +122,14 @@ class SModule(nn.Module):
         th_mat = rate_mat > (1 - s_rate)
         self.noise[zero_mat] = 0
         self.noise[th_mat].data = self.noise[th_mat].data.sign()
+        self.noise = self.noise * scale * dev_var
+    
+    def set_SG(self, s_rate, dev_var):
+        scale = self.op.weight.abs().max().item()
+        self.noise = torch.randn_like(self.noise)
+        rate_mat = torch.rand_like(self.noise)
+        th_mat = rate_mat < s_rate
+        self.noise[th_mat] = self.noise[th_mat].data.sign() * 3
         self.noise = self.noise * scale * dev_var
     
     def set_add(self, dev_var, write_var, N, m):
@@ -240,6 +313,9 @@ class NModule(nn.Module):
         noise_write = noise_write.to(self.op.weight.device) * scale
 
         self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
+    
+    def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write_var=0, **kwargs):
+        set_noise_multiple(self, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
     
     def set_pepper(self, dev_var, rate):
 
@@ -492,6 +568,11 @@ class NModel(nn.Module):
             if isinstance(mo, NModule) or isinstance(mo, SModule):
                 mo.set_noise(dev_var, write_var, N, m)
     
+    def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write_var=0, **kwargs):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+
     def set_pepper(self, dev_var, rate):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):
@@ -626,6 +707,11 @@ class SModel(nn.Module):
             if isinstance(mo, SModule) or isinstance(mo, NModule):
                 mo.set_noise(dev_var, write_var, N, m)
     
+    def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write_var=0, **kwargs):
+        for mo in self.modules():
+            if isinstance(mo, NModule) or isinstance(mo, SModule):
+                mo.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+
     def set_pepper(self, dev_var, rate):
         for mo in self.modules():
             if isinstance(mo, NModule) or isinstance(mo, SModule):

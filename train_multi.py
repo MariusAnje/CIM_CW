@@ -109,7 +109,7 @@ def NEachEval(dev_var, write_var):
             total += len(correction)
     return (correct/total).cpu().numpy()
 
-def SPUEachEval(s_rate, p_rate, dev_var):
+def MEachEval(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
     model.eval()
     total = 0
     correct = 0
@@ -117,28 +117,8 @@ def SPUEachEval(s_rate, p_rate, dev_var):
     with torch.no_grad():
         for images, labels in testloader:
             model.clear_noise()
-            model.set_noise_multiple("SPU", dev_var, rate_max=s_rate, rate_zero=p_rate)
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
             # model.set_SPU(s_rate, p_rate, dev_var)
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            correct += correction.sum()
-            total += len(correction)
-    return (correct/total).cpu().numpy()
-
-def AEachEval(dev_var):
-    model.eval()
-    total = 0
-    correct = 0
-    model.clear_noise()
-    with torch.no_grad():
-        for images, labels in testloader:
-            model.clear_noise()
-            model.set_noise_act(dev_var)
             images, labels = images.to(device), labels.to(device)
             # images = images.view(-1, 784)
             outputs = model(images)
@@ -176,7 +156,7 @@ def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
         scheduler.step()
 
-def SPUTrain(epochs, header, s_rate, p_rate, dev_var=0.0, verbose=False):
+def MTrain(epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
     best_acc = 0.0
     for i in range(epochs):
         model.train()
@@ -184,7 +164,7 @@ def SPUTrain(epochs, header, s_rate, p_rate, dev_var=0.0, verbose=False):
         # for images, labels in tqdm(trainloader):
         for images, labels in trainloader:
             model.clear_noise()
-            model.set_noise_multiple("SPU", dev_var, rate_max=s_rate, rate_zero=p_rate)
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
             # model.set_SPU(s_rate, p_rate, dev_var)
             optimizer.zero_grad()
             images, labels = images.to(device), labels.to(device)
@@ -194,34 +174,8 @@ def SPUTrain(epochs, header, s_rate, p_rate, dev_var=0.0, verbose=False):
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
-        test_acc = SPUEachEval(s_rate, p_rate, dev_var)
+        test_acc = MEachEval(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
         # test_acc = CEval()
-        if test_acc > best_acc:
-            best_acc = test_acc
-            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
-        if verbose:
-            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
-        scheduler.step()
-
-def ATrain(epochs, header, dev_var=0.0, verbose=False):
-    best_acc = 0.0
-    for i in range(epochs):
-        model.train()
-        running_loss = 0.
-        # for images, labels in tqdm(trainloader):
-        for images, labels in trainloader:
-            model.clear_noise()
-            model.set_noise_act(dev_var)
-            optimizer.zero_grad()
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            loss = criteriaF(outputs,labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        # test_acc = NEachEval(dev_var, write_var)
-        test_acc = AEachEval(dev_var)
         if test_acc > best_acc:
             best_acc = test_acc
             torch.save(model.state_dict(), f"tmp_best_{header}.pt")
@@ -273,10 +227,14 @@ if __name__ == "__main__":
             help='device variation [std] when training')
     parser.add_argument('--dev_var', action='store', type=float, default=0.3,
             help='device variation [std] before write and verify')
-    parser.add_argument('--p_rate', action='store', type=float, default=0.03,
+    parser.add_argument('--write_var', action='store', type=float, default=0.03,
+            help='device variation [std] after write and verify')
+    parser.add_argument('--rate_zero', action='store', type=float, default=0.03,
             help='pepper rate, rate of noise being zero')
-    parser.add_argument('--s_rate', action='store', type=float, default=0.03,
+    parser.add_argument('--rate_max', action='store', type=float, default=0.03,
             help='salt rate, rate of noise being one')
+    parser.add_argument('--noise_type', action='store', default="Gaussian",
+            help='type of noise used')
     parser.add_argument('--mask_p', action='store', type=float, default=0.01,
             help='portion of the mask')
     parser.add_argument('--device', action='store', default="cuda:0",
@@ -453,7 +411,8 @@ if __name__ == "__main__":
     
     model.to_first_only()
     model.de_select_drop()
-    SPUTrain(args.train_epoch, header, args.s_rate, args.p_rate, dev_var=args.train_var, verbose=args.verbose)
+    kwargs = {}
+    MTrain(args.train_epoch, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
@@ -468,7 +427,7 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = SPUEachEval(args.s_rate, args.p_rate, args.dev_var)
+    performance = MEachEval(args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var **kwargs)
     print(f"No mask noise acc: {performance:.4f}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
