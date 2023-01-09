@@ -34,6 +34,8 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_SPU(self, rate_max, rate_zero, dev_var)
     elif noise_type == "SG":
         set_SG(self, rate_max, dev_var)
+    elif noise_type == "lognorm":
+        set_lognorm(self, dev_var, rate_max)
 
 def set_pepper(self, dev_var, rate):
 
@@ -67,6 +69,13 @@ def set_SG(self, s_rate, dev_var):
     self.noise[th_mat] = self.noise[th_mat].data.sign() * 3
     self.noise = self.noise * scale * dev_var
 
+def set_lognorm(self, dev_var, s_rate):
+    # here s_rate means alpha of lognormal distribution
+    scale = self.op.weight.abs().max().item()
+    lognorm_scale = 0.1
+    np_noise = np.random.power(s_rate, self.noise.shape)
+    self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale
+    self.noise = self.noise * scale * dev_var
 
 class SModule(nn.Module):
     def __init__(self):
