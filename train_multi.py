@@ -159,6 +159,7 @@ def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
 def MTrain(epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
     best_acc = 0.0
     for i in range(epochs):
+        start_time = time.time()
         model.train()
         running_loss = 0.
         # for images, labels in tqdm(trainloader):
@@ -180,7 +181,8 @@ def MTrain(epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, 
             best_acc = test_acc
             torch.save(model.state_dict(), f"tmp_best_{header}.pt")
         if verbose:
-            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
+            end_time = time.time()
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, time used: {end_time - start_time:.2f}")
         scheduler.step()
 
 def str2bool(a):

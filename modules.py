@@ -6,6 +6,9 @@ from torch.nn.modules.pooling import MaxPool2d
 from Functions import SLinearFunction, SConv2dFunction, SMSEFunction, SCrossEntropyLossFunction, SBatchNorm2dFunction, TimesFunction, SDropout
 import numpy as np
 
+def create_sign_map(self):
+    return (torch.bernoulli(torch.ones_like(self.noise) * 0.5) - 0.5) * 2
+
 def set_noise(self, dev_var, write_var, N, m):
     # N: number of bits per weight, m: number of bits per device
     # Dev_var: device variation before write and verify
@@ -76,7 +79,7 @@ def set_lognorm(self, dev_var, s_rate, p_rate=0.1 ):
     scale = self.op.weight.abs().max().item()
     lognorm_scale = p_rate
     np_noise = np.random.power(s_rate, self.noise.shape)
-    self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale
+    self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale * create_sign_map(self)
     self.noise = self.noise * scale * dev_var
 
 def set_SL(self, dev_var, s_rate, p_rate=0.1):
@@ -84,7 +87,7 @@ def set_SL(self, dev_var, s_rate, p_rate=0.1):
     scale = self.op.weight.abs().max().item()
     lognorm_scale = p_rate
     np_noise = np.random.power(s_rate, self.noise.shape)
-    self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale
+    self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale * create_sign_map(self)
     self.noise[self.noise > 1] = 1
     self.noise = self.noise * scale * dev_var
 
