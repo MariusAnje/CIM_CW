@@ -64,9 +64,7 @@ def set_SPU(self, s_rate, p_rate, dev_var):
 def set_SG(self, s_rate, dev_var):
     scale = self.op.weight.abs().max().item()
     self.noise = torch.randn_like(self.noise)
-    rate_mat = torch.rand_like(self.noise)
-    th_mat = rate_mat < s_rate
-    self.noise[th_mat] = self.noise[th_mat].data.sign() * 3
+    self.noise[self.noise > s_rate] = s_rate
     self.noise = self.noise * scale * dev_var
 
 def set_lognorm(self, dev_var, s_rate):
