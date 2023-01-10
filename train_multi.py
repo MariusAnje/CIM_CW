@@ -429,7 +429,7 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = MEachEval(args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var **kwargs)
+    performance = MEachEval(args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
     print(f"No mask noise acc: {performance:.4f}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
