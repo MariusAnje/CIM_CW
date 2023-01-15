@@ -37,6 +37,8 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_SPU(self, rate_max, rate_zero, dev_var)
     elif noise_type == "SG":
         set_SG(self, rate_max, dev_var)
+    elif noise_type == "TG":
+        set_TG(self, rate_max, dev_var)
     elif noise_type == "powerlaw":
         set_powerlaw(self, dev_var, rate_max)
     elif noise_type == "SL":
@@ -68,18 +70,18 @@ def set_SPU(self, s_rate, p_rate, dev_var):
     self.noise[th_mat].data = self.noise[th_mat].data.sign()
     self.noise = self.noise * scale * dev_var
 
-def set_SG(self, s_rate, dev_var):
-    scale = self.op.weight.abs().max().item()
-    self.noise = torch.randn_like(self.noise)
-    self.noise[self.noise > s_rate] = s_rate
-    self.noise = self.noise * scale * dev_var
-
 def set_powerlaw(self, dev_var, s_rate, p_rate=0.1 ):
     # here s_rate means alpha of lognormal distribution
     scale = self.op.weight.abs().max().item()
     lognorm_scale = p_rate
     np_noise = np.random.power(s_rate, self.noise.shape)
     self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale * create_sign_map(self)
+    self.noise = self.noise * scale * dev_var
+
+def set_SG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    self.noise = torch.randn_like(self.noise)
+    self.noise[self.noise > s_rate] = s_rate
     self.noise = self.noise * scale * dev_var
 
 def set_SL(self, dev_var, s_rate, p_rate=0.1):
@@ -89,6 +91,24 @@ def set_SL(self, dev_var, s_rate, p_rate=0.1):
     np_noise = np.random.power(s_rate, self.noise.shape)
     self.noise = torch.Tensor(np_noise).to(torch.float32).to(self.noise.device) / lognorm_scale * create_sign_map(self)
     self.noise[self.noise > 1] = 1
+    self.noise = self.noise * scale * dev_var
+
+def set_TG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    def oversample_Gaussian(target_size, th):
+        tmp = np.random.normal(size=int(target_size*1/th*2))
+        index = np.abs(tmp) < 1*th
+        tmp = tmp[index][:target_size]
+        return tmp
+    target_size = self.noise.shape.numel()
+    for _ in range(10):
+        sampled_Gaussian = oversample_Gaussian(target_size, s_rate)
+        if len(sampled_Gaussian) == target_size:
+            break
+        else:
+            sampled_Gaussian = oversample_Gaussian(target_size, s_rate)
+    assert len(sampled_Gaussian) == target_size
+    self.noise = torch.Tensor(sampled_Gaussian).view(self.noise.size()).to(device=self.op.weight.device)
     self.noise = self.noise * scale * dev_var
 
 class SModule(nn.Module):
