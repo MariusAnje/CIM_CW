@@ -37,8 +37,8 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_SPU(self, rate_max, rate_zero, dev_var)
     elif noise_type == "SG":
         set_SG(self, rate_max, dev_var)
-    elif noise_type == "lognorm":
-        set_lognorm(self, dev_var, rate_max)
+    elif noise_type == "powerlaw":
+        set_powerlaw(self, dev_var, rate_max)
     elif noise_type == "SL":
         set_SL(self, dev_var, rate_max, rate_zero)
     else:
@@ -74,7 +74,7 @@ def set_SG(self, s_rate, dev_var):
     self.noise[self.noise > s_rate] = s_rate
     self.noise = self.noise * scale * dev_var
 
-def set_lognorm(self, dev_var, s_rate, p_rate=0.1 ):
+def set_powerlaw(self, dev_var, s_rate, p_rate=0.1 ):
     # here s_rate means alpha of lognormal distribution
     scale = self.op.weight.abs().max().item()
     lognorm_scale = p_rate
