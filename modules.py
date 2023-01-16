@@ -82,6 +82,7 @@ def set_SG(self, s_rate, dev_var):
     scale = self.op.weight.abs().max().item()
     self.noise = torch.randn_like(self.noise)
     self.noise[self.noise > s_rate] = s_rate
+    self.noise[self.noise < -s_rate] = -s_rate
     self.noise = self.noise * scale * dev_var
 
 def set_SL(self, dev_var, s_rate, p_rate=0.1):
