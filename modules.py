@@ -9,7 +9,7 @@ import numpy as np
 def create_sign_map(self):
     return (torch.bernoulli(torch.ones_like(self.noise) * 0.5) - 0.5) * 2
 
-def set_noise(self, dev_var, write_var, N, m):
+def set_noise_old(self, dev_var, write_var, N, m):
     # N: number of bits per weight, m: number of bits per device
     # Dev_var: device variation before write and verify
     # write_var: device variation after write and verity
@@ -21,6 +21,24 @@ def set_noise(self, dev_var, write_var, N, m):
             noise_dev   += (torch.normal(mean=0., std=dev_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
         if write_var != 0:
             noise_write += (torch.normal(mean=0., std=write_var, size=self.noise.size()) * (pow(2, - i*m))).to(self.op.weight.device)
+    noise_dev = noise_dev.to(self.op.weight.device) * scale
+    noise_write = noise_write.to(self.op.weight.device) * scale
+
+    self.noise = noise_dev * self.mask + noise_write * (1 - self.mask)
+
+def set_noise(self, dev_var, write_var, N, m):
+    # N: number of bits per weight, m: number of bits per device
+    # Dev_var: device variation before write and verify
+    # write_var: device variation after write and verity
+    scale = self.op.weight.abs().max().item()
+    noise_dev = torch.zeros_like(self.noise).to(self.op.weight.device)
+    noise_write = torch.zeros_like(self.noise).to(self.op.weight.device)
+    new_sigma = 0
+    for i in range(1, N//m + 1):
+        new_sigma += pow(2, - i*m) ** 2
+    new_sigma = np.sqrt(new_sigma)
+    noise_dev = torch.randn_like(self.noise) * new_sigma * dev_var
+    noise_write = torch.randn_like(self.noise) * new_sigma * write_var
     noise_dev = noise_dev.to(self.op.weight.device) * scale
     noise_write = noise_write.to(self.op.weight.device) * scale
 
@@ -39,6 +57,8 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_SG(self, rate_max, dev_var)
     elif noise_type == "TG":
         set_TG(self, rate_max, dev_var)
+    elif noise_type == "ATG":
+        set_ATG(self, rate_max, dev_var)
     elif noise_type == "powerlaw":
         set_powerlaw(self, dev_var, rate_max)
     elif noise_type == "SL":
@@ -67,7 +87,7 @@ def set_SPU(self, s_rate, p_rate, dev_var):
     zero_mat = rate_mat < p_rate
     th_mat = rate_mat > (1 - s_rate)
     self.noise[zero_mat] = 0
-    self.noise[th_mat].data = self.noise[th_mat].data.sign()
+    self.noise[th_mat] = self.noise[th_mat].data.sign()
     self.noise = self.noise * scale * dev_var
 
 def set_powerlaw(self, dev_var, s_rate, p_rate=0.1 ):
@@ -82,7 +102,7 @@ def set_SG(self, s_rate, dev_var):
     scale = self.op.weight.abs().max().item()
     self.noise = torch.randn_like(self.noise)
     self.noise[self.noise > s_rate] = s_rate
-    self.noise[self.noise < -s_rate] = -s_rate
+    # self.noise[self.noise < -s_rate] = -s_rate
     self.noise = self.noise * scale * dev_var
 
 def set_SL(self, dev_var, s_rate, p_rate=0.1):
@@ -99,6 +119,24 @@ def set_TG(self, s_rate, dev_var):
     def oversample_Gaussian(target_size, th):
         tmp = np.random.normal(size=int(target_size*1/th*2))
         index = np.abs(tmp) < 1*th
+        tmp = tmp[index][:target_size]
+        return tmp
+    target_size = self.noise.shape.numel()
+    for _ in range(10):
+        sampled_Gaussian = oversample_Gaussian(target_size, s_rate)
+        if len(sampled_Gaussian) == target_size:
+            break
+        else:
+            sampled_Gaussian = oversample_Gaussian(target_size, s_rate)
+    assert len(sampled_Gaussian) == target_size
+    self.noise = torch.Tensor(sampled_Gaussian).view(self.noise.size()).to(device=self.op.weight.device)
+    self.noise = self.noise * scale * dev_var
+
+def set_ATG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    def oversample_Gaussian(target_size, th):
+        tmp = np.random.normal(size=int(target_size*1/th*2))
+        index = tmp < (1*th)
         tmp = tmp[index][:target_size]
         return tmp
     target_size = self.noise.shape.numel()

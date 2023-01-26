@@ -602,7 +602,7 @@ if __name__ == "__main__":
     model.clear_noise()
     
     model.to_first_only()
-    steps = 200
+    steps = args.attack_runs
     step_size = args.attack_dist / steps
     attacker = PGD(model, args.attack_dist, step_size=step_size, steps=steps * 10)
     attacker.set_f(args.attack_function)
