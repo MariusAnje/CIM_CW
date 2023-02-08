@@ -416,19 +416,19 @@ if __name__ == "__main__":
     
     model.to_first_only()
     model.de_select_drop()
-    kwargs = {}
+    kwargs = {"N":8, "m":1}
     MTrain(args.train_epoch, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
     model.from_first_back_second()
-    torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.train_var}.pt")
+    torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
     print(f"No mask no noise: {CEval():.4f}")
     model.from_first_back_second()
-    state_dict = torch.load(f"saved_B_{header}_noise_{args.train_var}.pt")
+    state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
