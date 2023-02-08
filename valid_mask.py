@@ -236,7 +236,7 @@ if __name__ == "__main__":
             help='model to use')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
-    parser.add_argument('--header', action='store',type=int, default=1,
+    parser.add_argument('--header', action='store', default=None,
             help='use which saved state dict')
     parser.add_argument('--pretrained', action='store',type=str2bool, default=True,
             help='if to use pretrained model')
@@ -350,17 +350,18 @@ if __name__ == "__main__":
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
                                                     shuffle=False, num_workers=4)
     else:
+        NW = 0
         trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
                                                 download=False, transform=transforms.ToTensor())
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
-                                                shuffle=True, num_workers=2)
+                                                shuffle=True, num_workers=NW)
         secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div,
-                                                shuffle=False, num_workers=2)
+                                                shuffle=False, num_workers=NW)
 
         testset = torchvision.datasets.MNIST(root='~/Private/data', train=False,
                                             download=False, transform=transforms.ToTensor())
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
-                                                    shuffle=False, num_workers=2)
+                                                    shuffle=False, num_workers=NW)
 
 
     if args.model == "MLP3":

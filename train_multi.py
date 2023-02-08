@@ -247,7 +247,7 @@ if __name__ == "__main__":
             help='model to use')
     parser.add_argument('--alpha', action='store', type=float, default=1e6,
             help='weight used in saliency - substract')
-    parser.add_argument('--header', action='store',type=int, default=1,
+    parser.add_argument('--header', action='store', default=None,
             help='use which saved state dict')
     parser.add_argument('--pretrained', action='store',type=str2bool, default=True,
             help='if to use pretrained model')
@@ -280,8 +280,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(args)
-    header = time.time()
-    header_timer = header
+    if args.header is None:
+        header = time.time()
+        header_timer = header
+    else:
+        header = args.header
     parent_path = "./"
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
