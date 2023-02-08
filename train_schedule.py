@@ -414,7 +414,9 @@ if __name__ == "__main__":
     model.to_first_only()
     model.de_select_drop()
     kwargs = {"N":8, "m":1}
-    MTrain(args.train_epoch, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    starting_point = 1
+    MTrain(starting_point, header, args.noise_type, args.train_var/10, args.rate_max*3, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    MTrain(args.train_epoch - starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
