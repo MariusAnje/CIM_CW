@@ -612,7 +612,7 @@ if __name__ == "__main__":
     this_accuracy = CEval()
     this_max = attacker.noise_max().item()
     this_l2 = attacker.noise_l2().item()
-    print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}， max: {this_max:.4f}")
+    print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
     model.clear_noise()
     exit()
 
