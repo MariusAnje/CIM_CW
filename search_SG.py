@@ -18,9 +18,9 @@ def bounded_search_float(func, start, end, crr_iter, max_iter):
     if theMax == probMid:
         return bounded_search_float(func, left, right, crr_iter, max_iter)
     elif theMax == probLeft:
-        return bounded_search_float(func, left, right, crr_iter, max_iter)
+        return bounded_search_float(func, start, right, crr_iter, max_iter)
     else:
-        return bounded_search_float(func, left, right, crr_iter, max_iter)
+        return bounded_search_float(func, left, end, crr_iter, max_iter)
 
 def read_using_keyword(line:str, keyword:str, offset:int):
     index = line.find(keyword) + len(keyword)
