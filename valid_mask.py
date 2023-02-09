@@ -350,7 +350,7 @@ if __name__ == "__main__":
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
                                                     shuffle=False, num_workers=4)
     else:
-        NW = 0
+        NW = 2
         trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
                                                 download=False, transform=transforms.ToTensor())
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
