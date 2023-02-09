@@ -3,24 +3,53 @@ import time
 import argparse
 import numpy as np
 
-def bounded_search_float(func, start, end, crr_iter, max_iter): 
-    mid = (start + end) / 2
-    crr_iter += 1
-    if crr_iter > max_iter:
-        return func(mid)
-    oForth = (end - start) / 4
-    left = start + oForth
-    right = end - oForth
-    probMid = func(mid)
-    probLeft = func(left)
-    probRight = func(right)
-    theMax = max([probMid, probLeft, probRight])
-    if theMax == probMid:
-        return bounded_search_float(func, left, right, crr_iter, max_iter)
-    elif theMax == probLeft:
-        return bounded_search_float(func, start, right, crr_iter, max_iter)
-    else:
-        return bounded_search_float(func, left, end, crr_iter, max_iter)
+class BoundedSearch():
+    def __init__(self, max_iter) -> None:
+        self.replay_memory = {}
+        self.crr_iter = 0
+        self.max_iter = max_iter
+
+    def bounded_search_float(self, func, start, end): 
+        mid = (start + end) / 2
+        self.crr_iter += 1
+        if self.crr_iter > self.max_iter:
+            if f"{mid:.4f}" in self.replay_memory:
+                probMid = self.replay_memory[f"{mid:.4f}"]
+            else:
+                probMid = func(mid)
+                self.replay_memory[f"{mid:.4f}"] = probMid
+            return probMid
+
+        oForth = (end - start) / 4
+        left = start + oForth
+        right = end - oForth
+        if f"{mid:.4f}" in self.replay_memory:
+            probMid = self.replay_memory[f"{mid:.4f}"]
+        else:
+            probMid = func(mid)
+            self.replay_memory[f"{mid:.4f}"] = probMid
+
+        if f"{left:.4f}" in self.replay_memory:
+            probLeft = self.replay_memory[f"{left:.4f}"]
+        else:
+            probLeft = func(left)
+            self.replay_memory[f"{left:.4f}"] = probLeft
+
+        if f"{right:.4f}" in self.replay_memory:
+            probRight = self.replay_memory[f"{right:.4f}"]
+        else:
+            probRight = func(right)
+            self.replay_memory[f"{right:.4f}"] = probRight
+        
+        print(self.replay_memory)
+
+        theMax = max([probMid, probLeft, probRight])
+        if theMax == probMid:
+            return self.bounded_search_float(func, left, right)
+        elif theMax == probLeft:
+            return self.bounded_search_float(func, start, right)
+        else:
+            return self.bounded_search_float(func, left, end)
 
 def read_using_keyword(line:str, keyword:str, offset:int):
     index = line.find(keyword) + len(keyword)
@@ -34,7 +63,7 @@ def collect_result_from_file(filename):
             acc = float(read_using_keyword(line, "acc: ", 6))
     return acc
 
-class SGSearch():
+class SGEval():
     def __init__(self, th, distance, epochs, attack_runs, eval_runs) -> None:
         self.th = th
         self.distance= distance
@@ -93,6 +122,10 @@ if __name__ == "__main__":
 
     print(args)
 # bounded_search_float(func,1,39,0,10)
-    search = SGSearch(args.train_th, args.attack_dist, args.train_epoch, args.attack_runs, args.eval_runs)
+    evaluator = SGEval(args.train_th, args.attack_dist, args.train_epoch, args.attack_runs, args.eval_runs)
     # search.evaluate_dev_var(0.2, eval_runs=args.eval_runs)
-    print(bounded_search_float(search.evaluate_dev_var, 0, 1, 0, args.max_search_iter))
+    searcher = BoundedSearch(args.max_search_iter)
+    res = searcher.bounded_search_float(evaluator.evaluate_dev_var, args.train_var_start, args.train_var_end)
+    max_key = max(searcher.replay_memory, key=searcher.replay_memory.get)
+    max_value = max(searcher.replay_memory.values())
+    print(f"best variation: {max_key}, best accuracy: {max_value:.4f}")
