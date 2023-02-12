@@ -22,220 +22,9 @@ from cw_attack import Attack, WCW, binary_search_c, binary_search_dist, PGD
 import torch
 import torch.nn as nn
 import torch.optim as optim
-
-def CEval():
-    model.eval()
-    total = 0
-    correct = 0
-    # model.clear_noise()
-    with torch.no_grad():
-        # for images, labels in tqdm(testloader, leave=False):
-        for images, labels in testloader:
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            correct += correction.sum()
-            total += len(correction)
-    return (correct/total).cpu().numpy()
-
-def PGD_Eval(steps, attack_dist, attack_function, use_tqdm = False):
-    if steps == 0:
-        return CEval()
-    model.eval()
-    model.clear_noise()
-    model.normalize()
-    step_size = attack_dist / steps
-    attacker = PGD(model, attack_dist, step_size=step_size, steps=steps * 10)
-    attacker.set_f(attack_function)
-    attacker(testloader, use_tqdm)
-    # attacker.save_noise(f"lol_{header}_{args.attack_dist:.4f}.pt")
-    this_accuracy = CEval()
-    this_max = attacker.noise_max().item()
-    this_l2 = attacker.noise_l2().item()
-    # print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
-    model.clear_noise()
-    model.de_normalize()
-    return this_accuracy
-
-def CEval_Dist(num_classes=10):
-    model.eval()
-    total = 0
-    correct = 0
-    res_dist = torch.LongTensor([0 for _ in range(num_classes)])
-    crr_dist = torch.LongTensor([0 for _ in range(num_classes)])
-    # model.clear_noise()
-    with torch.no_grad():
-        # for images, labels in tqdm(testloader, leave=False):
-        for images, labels in testloader:
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            predict_list = predictions.tolist()
-            for i in range(len(res_dist)):
-                res_dist[i] += predict_list.count(i)
-            for i in range(len(predict_list)):
-                if correction[i] == True:
-                    crr_dist[predict_list[i]] += 1
-            correct += correction.sum()
-            total += len(correction)
-    print(f"Correction dict: {crr_dist.tolist()}")
-    return (correct/total).cpu().numpy(), res_dist
-
-def NEval(dev_var, write_var):
-    model.eval()
-    total = 0
-    correct = 0
-    model.clear_noise()
-    with torch.no_grad():
-        model.set_noise(dev_var, write_var)
-        for images, labels in testloader:
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            correct += correction.sum()
-            total += len(correction)
-    return (correct/total).cpu().numpy()
-
-def NEachEval(dev_var, write_var):
-    model.eval()
-    total = 0
-    correct = 0
-    model.clear_noise()
-    with torch.no_grad():
-        for images, labels in testloader:
-            model.clear_noise()
-            model.set_noise(dev_var, write_var)
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            correct += correction.sum()
-            total += len(correction)
-    return (correct/total).cpu().numpy()
-
-def MEachEval(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
-    model.eval()
-    total = 0
-    correct = 0
-    model.clear_noise()
-    with torch.no_grad():
-        for images, labels in testloader:
-            model.clear_noise()
-            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-            # model.set_SPU(s_rate, p_rate, dev_var)
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            if len(outputs) == 2:
-                outputs = outputs[0]
-            predictions = outputs.argmax(dim=1)
-            correction = predictions == labels
-            correct += correction.sum()
-            total += len(correction)
-    return (correct/total).cpu().numpy()
-
-def NTrain(epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
-    best_acc = 0.0
-    for i in range(epochs):
-        model.train()
-        running_loss = 0.
-        # for images, labels in tqdm(trainloader):
-        for images, labels in trainloader:
-            model.clear_noise()
-            model.set_noise(dev_var, write_var)
-            optimizer.zero_grad()
-            images, labels = images.to(device), labels.to(device)
-            # images = images.view(-1, 784)
-            outputs = model(images)
-            loss = criteriaF(outputs,labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        test_acc = NEachEval(dev_var, write_var)
-        # test_acc = CEval()
-        if test_acc > best_acc:
-            best_acc = test_acc
-            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
-        if verbose:
-            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
-        scheduler.step()
-
-def MTrain(epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
-    best_acc = 0.0
-    for i in range(epochs):
-        start_time = time.time()
-        model.train()
-        running_loss = 0.
-        # for images, labels in tqdm(trainloader):
-        for images, labels in trainloader:
-            model.clear_noise()
-            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-            optimizer.zero_grad()
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            loss = criteriaF(outputs,labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item()
-        test_acc = MEachEval(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-        pgd_acc = PGD_Eval(5, 0.040, "act", use_tqdm = False)
-        # test_acc = CEval()
-        if test_acc > best_acc:
-            best_acc = test_acc
-            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
-        if verbose:
-            end_time = time.time()
-            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, pgd acc: {pgd_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
-        scheduler.step()
-
-def str2bool(a):
-    if a == "True":
-        return True
-    elif a == "False":
-        return False
-    else:
-        raise NotImplementedError(f"{a}")
-
-def attack_wcw(model, val_data, verbose=False):
-    def my_target(x,y):
-        return (y+1)%10
-    max_list = []
-    avg_list = []
-    acc_list = []
-    for _ in range(1):
-        model.clear_noise()
-        model.set_noise(1e-5, 0)
-        attacker = WCW(model, c=args.attack_c, kappa=0, steps=args.attack_runs, lr=args.attack_lr, method=args.attack_method)
-        # attacker.set_mode_targeted_random(n_classses=10)
-        # attacker.set_mode_targeted_by_function(my_target)
-        attacker.set_mode_default()
-        attacker(val_data)
-        max_list.append(attacker.noise_max().item())
-        avg_list.append(attacker.noise_l2().item())
-        attack_accuracy = CEval()
-        acc_list.append(attack_accuracy)
-    
-    mean_attack = np.mean(acc_list)
-    if verbose:
-        print(f"L2 norm: {np.mean(avg_list):.4f}, max: {np.mean(max_list):.4f}, acc: {mean_attack:.4f}")
-    w = attacker.get_noise()
-    return mean_attack, w
-
+from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
+from utils import PMTrain, MTrain, CEval, MEachEval, PGD_Eval
+from utils import copy_model
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -305,136 +94,21 @@ if __name__ == "__main__":
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     BS = 128
+    NW = 0
 
-    if args.model == "CIFAR" or args.model == "Res18" or args.model == "QCIFAR" or args.model == "QRes18" or args.model == "QDENSE":
-        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
-        transform = transforms.Compose(
-        [transforms.ToTensor(),
-        #  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
-            normalize])
-        train_transform = transforms.Compose([
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(32, 4),
-                transforms.ToTensor(),
-                normalize,
-                ])
-        trainset = torchvision.datasets.CIFAR10(root='~/Private/data', train=True, download=False, transform=train_transform)
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=4)
-        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=4)
-        testset = torchvision.datasets.CIFAR10(root='~/Private/data', train=False, download=False, transform=transform)
-        testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=4)
-    elif args.model == "TIN" or args.model == "QTIN" or args.model == "QVGG":
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225])
-        transform = transforms.Compose(
-                [transforms.ToTensor(),
-                 normalize,
-                ])
-        train_transform = transforms.Compose([
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(64, 4),
-                transforms.ToTensor(),
-                normalize,
-                ])
-        trainset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/train', transform=train_transform)
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=8)
-        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=8)
-        testset = torchvision.datasets.ImageFolder(root='~/Private/data/tiny-imagenet-200/val',  transform=transform)
-        testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=8)
-    elif args.model == "QVGGIN" or args.model == "QResIN":
-        normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        pre_process = [
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-        ]
-        pre_process += [
-            transforms.ToTensor(),
-            normalize
-        ]
+    trainloader, secondloader, testloader = get_dataset(args, BS, NW)
+    model = get_model(args)
+    model, optimizer, scheduler = prepare_model(model, device)
+    new_model, optimizer, scheduler = copy_model(model, args)
 
-        trainset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/train',
-                                transform=transforms.Compose(pre_process))
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
-                                                shuffle=True, num_workers=2)
-
-        testset = torchvision.datasets.ImageFolder('/data/data/share/imagenet/val',
-                                transform=transforms.Compose([
-                                    transforms.Resize(256),
-                                    transforms.CenterCrop(224),
-                                    transforms.ToTensor(),
-                                    normalize
-                                ]))
-        testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
-                                                    shuffle=False, num_workers=4)
-    else:
-        NW = 0
-        trainset = torchvision.datasets.MNIST(root='~/Private/data', train=True,
-                                                download=False, transform=transforms.ToTensor())
-        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS,
-                                                shuffle=True, num_workers=NW)
-        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div,
-                                                shuffle=False, num_workers=NW)
-
-        testset = torchvision.datasets.MNIST(root='~/Private/data', train=False,
-                                            download=False, transform=transforms.ToTensor())
-        testloader = torch.utils.data.DataLoader(testset, batch_size=BS,
-                                                    shuffle=False, num_workers=NW)
-
-
-    if args.model == "MLP3":
-        model = SMLP3()
-    elif args.model == "MLP3_2":
-        model = SMLP3()
-    elif args.model == "MLP4":
-        model = SMLP4()
-    elif args.model == "LeNet":
-        model = SLeNet()
-    elif args.model == "CIFAR":
-        model = CIFAR()
-    elif args.model == "Res18":
-        model = resnet.resnet18(num_classes = 10)
-    elif args.model == "TIN":
-        model = resnet.resnet18(num_classes = 200)
-    elif args.model == "QLeNet":
-        model = QSLeNet()
-    elif args.model == "QCIFAR":
-        model = QCIFAR()
-    elif args.model == "QRes18":
-        model = qresnet.resnet18(num_classes = 10)
-    elif args.model == "QDENSE":
-        model = qdensnet.densenet121(num_classes = 10)
-    elif args.model == "QTIN":
-        model = qresnet.resnet18(num_classes = 200)
-    elif args.model == "QVGG":
-        model = qvgg.vgg16(num_classes = 1000)
-    elif args.model == "Adv":
-        model = SAdvNet()
-    elif args.model == "QVGGIN":
-        model = qvgg.vgg16(num_classes = 1000)
-    elif args.model == "QResIN":
-        model = qresnetIN.resnet18(num_classes = 1000)
-    else:
-        NotImplementedError
-
-    model.to(device)
-    for m in model.modules():
-        if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
-            m.device = device
-    model.push_S_device()
-    model.clear_noise()
-    model.clear_mask()
     criteria = SCrossEntropyLoss()
     criteriaF = torch.nn.CrossEntropyLoss()
-
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
     
-    model.to_first_only()
-    model.de_select_drop()
     kwargs = {"N":8, "m":1}
+    model_group = new_model, criteriaF, optimizer, scheduler, device, trainloader, testloader
     starting_point = 0
-    MTrain(starting_point, header, args.noise_type, args.train_var/10, args.rate_max*3, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
-    MTrain(args.train_epoch - starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    PMTrain(model_group, starting_point, header, args.noise_type, args.train_var/10, args.rate_max*3, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    PMTrain(model_group, args.train_epoch - starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
@@ -443,13 +117,13 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
-    print(f"No mask no noise: {CEval():.4f}")
+    print(f"No mask no noise: {CEval(model_group):.4f}")
     model.from_first_back_second()
     state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = MEachEval(args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
+    performance = MEachEval(model_group, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
     print(f"No mask noise acc: {performance:.4f}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
