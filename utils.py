@@ -174,12 +174,12 @@ def CEval(model_group):
             correction = predictions == labels
             correct += correction.sum()
             total += len(correction)
-    return (correct/total).cpu().numpy()
+    return (correct/total).cpu().item()
 
 def PGD_Eval(model_group, steps, attack_dist, attack_function, use_tqdm = False):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
     if steps == 0:
-        return CEval()
+        return CEval(model_group)
     model.eval()
     model.clear_noise()
     model.normalize()
@@ -223,7 +223,7 @@ def CEval_Dist(model_group, num_classes=10):
             correct += correction.sum()
             total += len(correction)
     print(f"Correction dict: {crr_dist.tolist()}")
-    return (correct/total).cpu().numpy(), res_dist
+    return (correct/total).cpu().item(), res_dist
 
 def NEval(model_group, dev_var, write_var):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
@@ -243,7 +243,7 @@ def NEval(model_group, dev_var, write_var):
             correction = predictions == labels
             correct += correction.sum()
             total += len(correction)
-    return (correct/total).cpu().numpy()
+    return (correct/total).cpu().item()
 
 def NEachEval(model_group, dev_var, write_var):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
@@ -264,7 +264,7 @@ def NEachEval(model_group, dev_var, write_var):
             correction = predictions == labels
             correct += correction.sum()
             total += len(correction)
-    return (correct/total).cpu().numpy()
+    return (correct/total).cpu().item()
 
 def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
@@ -286,7 +286,81 @@ def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, 
             correction = predictions == labels
             correct += correction.sum()
             total += len(correction)
-    return (correct/total).cpu().numpy()
+    return (correct/total).cpu().item()
+
+def TMEachEval(t_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs):
+    t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader = t_model_group
+    acc_list = []
+    for i in range(len(t_model)):
+        model = t_model[i]
+        model.eval()
+        total = 0
+        correct = 0
+        model.clear_noise()
+        with torch.no_grad():
+            for images, labels in testloader:
+                model.clear_noise()
+                model.set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
+                # model.set_SPU(s_rate, p_rate, dev_var)
+                images, labels = images.to(device), labels.to(device)
+                # images = images.view(-1, 784)
+                outputs = model(images)
+                if len(outputs) == 2:
+                    outputs = outputs[0]
+                predictions = outputs.argmax(dim=1)
+                correction = predictions == labels
+                correct += correction.sum()
+                total += len(correction)
+            acc_list.append((correct/total).cpu().item())
+    return acc_list
+
+def TPGD_Eval(t_model_group, steps, attack_dist, attack_function, use_tqdm = False):
+    t_model, criteriaF, optimizer, scheduler, device, trainloader, testloader = t_model_group
+    acc_list = []
+    for i in range(len(t_model)):
+        model = t_model[i]
+        model_group = [model, criteriaF, optimizer, scheduler, device, trainloader, testloader]
+        if steps == 0:
+            return CEval(model_group)
+        model.eval()
+        model.clear_noise()
+        model.normalize()
+        step_size = attack_dist / steps
+        attacker = PGD(model, attack_dist, step_size=step_size, steps=steps * 10)
+        attacker.set_f(attack_function)
+        attacker(testloader, use_tqdm)
+        # attacker.save_noise(f"lol_{header}_{args.attack_dist:.4f}.pt")
+        this_accuracy = CEval(model_group)
+        this_max = attacker.noise_max().item()
+        this_l2 = attacker.noise_l2().item()
+        # print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
+        model.clear_noise()
+        model.de_normalize()
+        acc_list.append(this_accuracy)
+    return acc_list
+
+def TCEval(t_model_group):
+    t_model, criteriaF, optimizer, scheduler, device, trainloader, testloader = t_model_group
+    acc_list = []
+    for model in t_model:
+        model.eval()
+        total = 0
+        correct = 0
+        # model.clear_noise()
+        with torch.no_grad():
+            # for images, labels in tqdm(testloader, leave=False):
+            for images, labels in testloader:
+                images, labels = images.to(device), labels.to(device)
+                # images = images.view(-1, 784)
+                outputs = model(images)
+                if len(outputs) == 2:
+                    outputs = outputs[0]
+                predictions = outputs.argmax(dim=1)
+                correction = predictions == labels
+                correct += correction.sum()
+                total += len(correction)
+            acc_list.append((correct/total).cpu().numpy())
+    return acc_list
 
 def NTrain(model_group, epochs, header, dev_var=0.0, write_var=0.0, verbose=False):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
@@ -372,10 +446,16 @@ def PMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, pgd acc: {pgd_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
         scheduler.step()
 
-def TPMTrain(three_model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
+def TPMTrain(three_model_group, epochs, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, verbose=False, **kwargs):
     t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
     best_acc = 0.0
-    for i in range(epochs):
+    start, end = dev_var_start, dev_var_end
+    for ep in range(epochs):
+        mid = (start + end)/2
+        oForth = (end - start) / 4
+        left = start + oForth
+        right = end - oForth
+        dev_var_list = [left, mid, right]
         start_time = time.time()
         for i in range(len(t_model)):
             t_model[i].train()
@@ -384,7 +464,7 @@ def TPMTrain(three_model_group, epochs, header, noise_type, dev_var, rate_max, r
         for images, labels in trainloader:
             for i in range(len(t_model)):
                 t_model[i].clear_noise()
-                t_model[i].set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+                t_model[i].set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
                 t_optimizer[i].zero_grad()
                 images, labels = images.to(device), labels.to(device)
                 outputs = t_model[i](images)
@@ -392,15 +472,26 @@ def TPMTrain(three_model_group, epochs, header, noise_type, dev_var, rate_max, r
                 loss.backward()
                 t_optimizer[i].step()
                 running_loss += loss.item()
-        test_acc = MEachEval(three_model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-        pgd_acc = PGD_Eval(three_model_group, 5, 0.040, "act", use_tqdm = False)
+        test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs)
+        pgd_acc = TPGD_Eval(three_model_group, 5, 0.040, "act", use_tqdm = False)
+        best_pgd_index = np.argmax(pgd_acc)
+        if best_pgd_index == 0:
+            end = right
+        elif best_pgd_index == 1:
+            start = left
+            end = right
+        else:
+            start = left
+        for i in range(len(t_model)):
+            t_model[i].load_state_dict(t_model[best_pgd_index].state_dict())
+
         # test_acc = CEval()
-        if test_acc > best_acc:
-            best_acc = test_acc
-            torch.save(t_model[0].state_dict(), f"tmp_best_{header}.pt")
+        if pgd_acc[best_pgd_index] > best_acc:
+            best_acc = pgd_acc[best_pgd_index]
+            torch.save(t_model[best_pgd_index].state_dict(), f"tmp_best_{header}.pt")
         if verbose:
             end_time = time.time()
-            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, pgd acc: {pgd_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+            print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, pgd acc: {pgd_acc[best_pgd_index]:.4f}, left: {left:.4f}, right: {right:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
         for i in range(len(t_scheduler)):
             t_scheduler[i].step()
 

@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
-from utils import PMTrain, MTrain, CEval, MEachEval, PGD_Eval
+from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval
 from utils import copy_model
 
 if __name__ == "__main__":
@@ -98,17 +98,20 @@ if __name__ == "__main__":
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
-    model, optimizer, scheduler = prepare_model(model, device)
-    new_model, optimizer, scheduler = copy_model(model, args)
+    model1, optimizer1, scheduler1 = prepare_model(model, device)
+    model2, optimizer2, scheduler2 = copy_model(model, args)
+    model3, optimizer3, scheduler3 = copy_model(model, args)
+    t_model = [model1, model2, model3]
+    t_optimizer = [optimizer1, optimizer2, optimizer3]
+    t_scheduler = [scheduler1, scheduler2, scheduler3]
+    
 
     criteria = SCrossEntropyLoss()
     criteriaF = torch.nn.CrossEntropyLoss()
     
     kwargs = {"N":8, "m":1}
-    model_group = new_model, criteriaF, optimizer, scheduler, device, trainloader, testloader
-    starting_point = 0
-    PMTrain(model_group, starting_point, header, args.noise_type, args.train_var/10, args.rate_max*3, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
-    PMTrain(model_group, args.train_epoch - starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    t_model_group = t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader
+    TPMTrain(t_model_group, args.train_epoch, header, args.noise_type, 0, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
@@ -117,14 +120,14 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
-    print(f"No mask no noise: {CEval(model_group):.4f}")
+    print(f"No mask no noise: {', '.join([ f'{acc:.4f}' for acc in TCEval(t_model_group)])}")
     model.from_first_back_second()
     state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = MEachEval(model_group, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
-    print(f"No mask noise acc: {performance:.4f}")
+    performance = TMEachEval(t_model_group, args.noise_type, [args.train_var, args.train_var, args.train_var], args.rate_max, args.rate_zero, args.write_var, **kwargs)
+    print(f"No mask noise acc: {', '.join([ f'{acc:.4f}' for acc in performance])}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
 
