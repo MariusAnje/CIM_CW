@@ -338,6 +338,8 @@ class SLinear(SModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.original_w = self.original_w
+        new.original_b = self.original_b
         return new
 
     def forward(self, xC):
@@ -365,6 +367,8 @@ class SConv2d(SModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
+        new.original_w = self.original_w
+        new.original_b = self.original_b
         return new
 
     def forward(self, xC):
@@ -693,6 +697,26 @@ class NModel(nn.Module):
                 device = m.op.weight.device
             if isinstance(m, SAct) or isinstance(m, NAct):
                 m.push_S_device(device)
+    
+    def de_normalize(self):
+        for mo in self.modules():
+            # if isinstance(mo, SLinear) or isinstance(mo, SConv2d):
+            if isinstance(mo, SModule) or isinstance(mo, NModule):
+                if mo.original_w is None:
+                    raise Exception("no original weight")
+                else:
+                    mo.scale = 1.0
+                    mo.op.weight.data = mo.original_w
+                    mo.original_w = None
+                    if mo.original_b is not None:
+                        mo.op.bias.data = mo.original_b
+                        mo.original_b = None
+    
+    def normalize(self):
+        for mo in self.modules():
+            # if isinstance(mo, SLinear) or isinstance(mo, SConv2d):
+            if isinstance(mo, SModule) or isinstance(mo, NModule):
+                mo.normalize()
 
 class SModel(nn.Module):
     def __init__(self):

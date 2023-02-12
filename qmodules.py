@@ -25,6 +25,8 @@ class QSLinear(SModule):
         new.mask = self.mask
         new.scale = self.scale
         new.input_range = self.input_range
+        new.original_w = self.original_w
+        new.original_b = self.original_b
         return new
 
     def forward(self, xC):
@@ -61,6 +63,8 @@ class QSConv2d(SModule):
         new.mask = self.mask
         new.scale = self.scale
         new.input_range = self.input_range
+        new.original_w = self.original_w
+        new.original_b = self.original_b
         return new
 
     def forward(self, xC):
