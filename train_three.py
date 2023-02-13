@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
-    model1, optimizer1, w_optimizer1, scheduler1 = prepare_model(model, device)
+    model1, optimizer1, w_optimizer1, scheduler1 = prepare_model(model, device, args)
     model2, optimizer2, w_optimizer2, scheduler2 = copy_model(model, args)
     model3, optimizer3, w_optimizer3, scheduler3 = copy_model(model, args)
     t_model = [model1, model2, model3]

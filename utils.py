@@ -126,7 +126,7 @@ def get_model(args):
         NotImplementedError
     return model
 
-def prepare_model(model, device):
+def prepare_model(model, device, args):
     model.to(device)
     for m in model.modules():
         if isinstance(m, modules.FixedDropout) or isinstance(m, modules.NFixedDropout) or isinstance(m, modules.SFixedDropout):
@@ -136,9 +136,15 @@ def prepare_model(model, device):
     model.clear_mask()
     model.to_first_only()
     model.de_select_drop()
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    warm_optimizer = optim.SGD(model.parameters(), lr=1e-4)
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
+    if "TIN" in args.model or "Res" in args.model or "VGG" in args.model or "DENSE" in args.model:
+    # if "TIN" in args.model or "Res" in args.model:
+        optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.train_epoch)
+        # scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [1000])
+    else:
+        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
+    warm_optimizer = optim.SGD(model.parameters(), lr=1e-3)
     return model, optimizer, warm_optimizer, scheduler
 
 def copy_model(old_model, args):
