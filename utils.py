@@ -154,7 +154,7 @@ def copy_model(old_model, args):
         if "weight" in key:
             device = state_dict[key].device
             break
-    new_model, optimizer, warm_optimizer, scheduler = prepare_model(new_model, device)
+    new_model, optimizer, warm_optimizer, scheduler = prepare_model(new_model, device, args)
     new_model.load_state_dict(old_model.state_dict())
     return new_model, optimizer, warm_optimizer, scheduler
 
