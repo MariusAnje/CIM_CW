@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
-from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval
+from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval
 from utils import copy_model
 
 if __name__ == "__main__":
@@ -78,12 +78,18 @@ if __name__ == "__main__":
             help='learning rate for attack')
     parser.add_argument('--attack_method', action='store', default="l2", choices=["max", "l2", "linf", "loss"],
             help='method used for attack')
+    parser.add_argument('--attack_dist', action='store', type=float, default=0.0,
+            help='method used for attack')
+    parser.add_argument('--train_attack_runs', action='store',type=int, default=10,
+            help='# of runs for attack during training')
     parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
             help='if we should load the attack')
     parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
             help='if we should load the noise directions')
     parser.add_argument('--use_tqdm', action='store',type=str2bool, default=False,
             help='whether to use tqdm')
+    parser.add_argument('--warm_epoch', action='store',type=int, default=0,
+            help='# of epochs to warm up')
     args = parser.parse_args()
 
     print(args)
@@ -98,11 +104,12 @@ if __name__ == "__main__":
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
-    model1, optimizer1, scheduler1 = prepare_model(model, device)
-    model2, optimizer2, scheduler2 = copy_model(model, args)
-    model3, optimizer3, scheduler3 = copy_model(model, args)
+    model1, optimizer1, w_optimizer1, scheduler1 = prepare_model(model, device)
+    model2, optimizer2, w_optimizer2, scheduler2 = copy_model(model, args)
+    model3, optimizer3, w_optimizer3, scheduler3 = copy_model(model, args)
     t_model = [model1, model2, model3]
     t_optimizer = [optimizer1, optimizer2, optimizer3]
+    w_optimizer = [w_optimizer1, w_optimizer2, w_optimizer3]
     t_scheduler = [scheduler1, scheduler2, scheduler3]
     
 
@@ -110,9 +117,10 @@ if __name__ == "__main__":
     criteriaF = torch.nn.CrossEntropyLoss()
     
     kwargs = {"N":8, "m":1}
-    t_model_group = t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader
-    TPMTrain(t_model_group, args.train_epoch, header, args.noise_type, 0, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    t_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader
+    TPMTrain(t_model_group, args.warm_epoch, args.train_epoch, header, args.noise_type, 0, args.train_var, args.rate_max, args.rate_zero, args.write_var, args.train_attack_runs, args.attack_dist, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
+    model_group = model, criteriaF, t_optimizer[0], t_scheduler[0], device, trainloader, testloader
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
@@ -120,14 +128,15 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
-    print(f"No mask no noise: {', '.join([ f'{acc:.4f}' for acc in TCEval(t_model_group)])}")
+    # print(f"No mask no noise: {', '.join([ f'{acc:.4f}' for acc in TCEval(t_model_group)])}")
+    print(f"No mask no noise: {CEval(model_group):.4f}")
     model.from_first_back_second()
     state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = TMEachEval(t_model_group, args.noise_type, [args.train_var, args.train_var, args.train_var], args.rate_max, args.rate_zero, args.write_var, **kwargs)
-    print(f"No mask noise acc: {', '.join([ f'{acc:.4f}' for acc in performance])}")
+    performance = PGD_Eval(model_group, args.attack_runs, args.attack_dist, "act")
+    print(f"No mask PGD acc: {performance:.4f}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
 

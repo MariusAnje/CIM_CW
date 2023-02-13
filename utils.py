@@ -137,8 +137,9 @@ def prepare_model(model, device):
     model.to_first_only()
     model.de_select_drop()
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    warm_optimizer = optim.SGD(model.parameters(), lr=1e-4)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
-    return model, optimizer, scheduler
+    return model, optimizer, warm_optimizer, scheduler
 
 def copy_model(old_model, args):
     new_model = get_model(args)
@@ -147,9 +148,9 @@ def copy_model(old_model, args):
         if "weight" in key:
             device = state_dict[key].device
             break
-    new_model, optimizer, scheduler = prepare_model(new_model, device)
+    new_model, optimizer, warm_optimizer, scheduler = prepare_model(new_model, device)
     new_model.load_state_dict(old_model.state_dict())
-    return new_model, optimizer, scheduler
+    return new_model, optimizer, warm_optimizer, scheduler
 
 
 
@@ -289,7 +290,7 @@ def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, 
     return (correct/total).cpu().item()
 
 def TMEachEval(t_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs):
-    t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader = t_model_group
+    t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = t_model_group
     acc_list = []
     for i in range(len(t_model)):
         model = t_model[i]
@@ -315,7 +316,7 @@ def TMEachEval(t_model_group, noise_type, dev_var_list, rate_max, rate_zero, wri
     return acc_list
 
 def TPGD_Eval(t_model_group, steps, attack_dist, attack_function, use_tqdm = False):
-    t_model, criteriaF, optimizer, scheduler, device, trainloader, testloader = t_model_group
+    t_model, criteriaF, optimizer, w_optimizer, scheduler, device, trainloader, testloader = t_model_group
     acc_list = []
     for i in range(len(t_model)):
         model = t_model[i]
@@ -340,7 +341,7 @@ def TPGD_Eval(t_model_group, steps, attack_dist, attack_function, use_tqdm = Fal
     return acc_list
 
 def TCEval(t_model_group):
-    t_model, criteriaF, optimizer, scheduler, device, trainloader, testloader = t_model_group
+    t_model, criteriaF, optimizer, w_optimizer, scheduler, device, trainloader, testloader = t_model_group
     acc_list = []
     for model in t_model:
         model.eval()
@@ -446,11 +447,12 @@ def PMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, pgd acc: {pgd_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
         scheduler.step()
 
-def TPMTrain(three_model_group, epochs, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, verbose=False, **kwargs):
-    t_model, criteriaF, t_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
+def TPMTrain(three_model_group, warm_epochs, epochs, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, attack_runs, attack_dist, verbose=False, **kwargs):
+    t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
     best_acc = 0.0
     start, end = dev_var_start, dev_var_end
-    for ep in range(epochs):
+    
+    for ep in range(warm_epochs + epochs):
         mid = (start + end)/2
         oForth = (end - start) / 4
         left = start + oForth
@@ -470,30 +472,41 @@ def TPMTrain(three_model_group, epochs, header, noise_type, dev_var_start, dev_v
                 outputs = t_model[i](images)
                 loss = criteriaF(outputs,labels)
                 loss.backward()
-                t_optimizer[i].step()
+                if ep >= warm_epochs:
+                    t_optimizer[i].step()
+                else:
+                    w_optimizer[i].step()
                 running_loss += loss.item()
         test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs)
-        pgd_acc = TPGD_Eval(three_model_group, 5, 0.040, "act", use_tqdm = False)
-        best_pgd_index = np.argmax(pgd_acc)
-        if best_pgd_index == 0:
-            end = right
-        elif best_pgd_index == 1:
-            start = left
-            end = right
-        else:
-            start = left
-        for i in range(len(t_model)):
-            t_model[i].load_state_dict(t_model[best_pgd_index].state_dict())
+        best_pgd_index = 1
+        if ep >= warm_epochs:
+            pgd_acc = TPGD_Eval(three_model_group, attack_runs, attack_dist, "act", use_tqdm = False)
+            best_pgd_index = np.argmax(pgd_acc)
+            if best_pgd_index == 0:
+                end = right
+            elif best_pgd_index == 1:
+                start = left
+                end = right
+            else:
+                start = left
+            for i in range(len(t_model)):
+                t_model[i].load_state_dict(t_model[best_pgd_index].state_dict())
 
-        # test_acc = CEval()
-        if pgd_acc[best_pgd_index] > best_acc:
-            best_acc = pgd_acc[best_pgd_index]
-            torch.save(t_model[best_pgd_index].state_dict(), f"tmp_best_{header}.pt")
-        if verbose:
-            end_time = time.time()
-            print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, pgd acc: {pgd_acc[best_pgd_index]:.4f}, left: {left:.4f}, right: {right:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
-        for i in range(len(t_scheduler)):
-            t_scheduler[i].step()
+            # test_acc = CEval()
+            if pgd_acc[best_pgd_index] > best_acc:
+                best_acc = pgd_acc[best_pgd_index]
+                torch.save(t_model[best_pgd_index].state_dict(), f"tmp_best_{header}.pt")
+            
+            for i in range(len(t_scheduler)):
+                t_scheduler[i].step()
+            if verbose:
+                end_time = time.time()
+                print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, pgd acc: {pgd_acc[best_pgd_index]:.4f}, left: {left:.4f}, right: {right:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+        else:
+            if verbose:
+                end_time = time.time()
+                print(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+
 
 def str2bool(a):
     if a == "True":
