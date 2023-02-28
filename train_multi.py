@@ -23,7 +23,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
-from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval
+from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval, UpdateBN
 from utils import copy_model
 
 if __name__ == "__main__":
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     BS = 128
-    NW = 0
+    NW = 2
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
@@ -117,8 +117,12 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
+    for _ in range(3):
+        UpdateBN(model_group)
     print(f"No mask no noise: {CEval(model_group):.4f}")
     model.from_first_back_second()
+    model.from_first_back_second()
+    torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()

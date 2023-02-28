@@ -14,7 +14,8 @@ class QSLinear(SModule):
         self.create_helper()
         self.function = SLinearFunction.apply
         self.N = N
-        nn.init.zeros_(self.op.bias)
+        if self.op.bias is not None:
+            nn.init.zeros_(self.op.bias)
         nn.init.kaiming_normal_(self.op.weight)
         self.register_buffer('input_range', torch.zeros(1))
     
@@ -52,7 +53,8 @@ class QSConv2d(SModule):
         self.create_helper()
         self.function = SConv2dFunction.apply
         self.N = N
-        nn.init.zeros_(self.op.bias)
+        if self.op.bias is not None:
+            nn.init.zeros_(self.op.bias)
         nn.init.kaiming_normal_(self.op.weight)
         self.register_buffer('input_range', torch.zeros(1))
 
@@ -136,14 +138,15 @@ class QNConv2d(NModule):
         new.noise = self.noise
         new.mask = self.mask
         new.scale = self.scale
-        new.input_range = self.input_range
+        new.input_range = self.input_range 
         return new
 
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                m.bias.zero_()
+                if m.bias is not None:
+                    m.bias.zero_()
 
     def forward(self, x):
         # x = self.function(x, quant(self.N, self.op.weight) + self.noise, None, self.op.stride, self.op.padding, self.op.dilation, self.op.groups)

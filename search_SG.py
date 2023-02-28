@@ -2,12 +2,14 @@ import os
 import time
 import argparse
 import numpy as np
+import logging
 
 class BoundedSearch():
-    def __init__(self, max_iter) -> None:
+    def __init__(self, max_iter, logger) -> None:
         self.replay_memory = {}
         self.crr_iter = 0
         self.max_iter = max_iter
+        self.logger = logger
 
     def bounded_search_float(self, func, start, end): 
         mid = (start + end) / 2
@@ -16,7 +18,7 @@ class BoundedSearch():
             if f"{mid:.4f}" in self.replay_memory:
                 probMid = self.replay_memory[f"{mid:.4f}"]
             else:
-                probMid = func(mid)
+                probMid = func(mid, self.logger)
                 self.replay_memory[f"{mid:.4f}"] = probMid
             return probMid
 
@@ -26,22 +28,22 @@ class BoundedSearch():
         if f"{mid:.4f}" in self.replay_memory:
             probMid = self.replay_memory[f"{mid:.4f}"]
         else:
-            probMid = func(mid)
+            probMid = func(mid, self.logger)
             self.replay_memory[f"{mid:.4f}"] = probMid
 
         if f"{left:.4f}" in self.replay_memory:
             probLeft = self.replay_memory[f"{left:.4f}"]
         else:
-            probLeft = func(left)
+            probLeft = func(left, self.logger)
             self.replay_memory[f"{left:.4f}"] = probLeft
 
         if f"{right:.4f}" in self.replay_memory:
             probRight = self.replay_memory[f"{right:.4f}"]
         else:
-            probRight = func(right)
+            probRight = func(right, self.logger)
             self.replay_memory[f"{right:.4f}"] = probRight
         
-        print(self.replay_memory)
+        self.logger.info(self.replay_memory)
 
         theMax = max([probMid, probLeft, probRight])
         if theMax == probMid:
@@ -73,7 +75,7 @@ class SGEval():
         self.model = model
         self.device = device
 
-    def evaluate_dev_var(self, dev_var):
+    def evaluate_dev_var(self, dev_var, logger):
         acc_list = []
         for _ in range(self.eval_runs):
             header = time.time()
@@ -88,9 +90,22 @@ class SGEval():
             os.remove(f"saved_B_{right}.pt")
             os.remove(output_filename)
             os.remove(tmp_filename)
-        print(f"dev var: {dev_var:.4f}, PGD acc: {np.mean(acc_list):.4f}")
+        logger.info(f"dev var: {dev_var:.4f}, PGD acc: {np.mean(acc_list):.4f}")
         return np.mean(acc_list)
 
+def get_logger(filepath=None):
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m-%d %H:%M:%S'))
+    logger.addHandler(console_handler)
+    if filepath is not None:
+        file_handler = logging.FileHandler(filepath+'.log', mode='w')
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%m-%d %H:%M:%S'))
+        logger.addHandler(file_handler)
+    return logger
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -122,12 +137,13 @@ if __name__ == "__main__":
             help='# of epochs of training')
     args = parser.parse_args()
 
-    print(args)
-# bounded_search_float(func,1,39,0,10)
+    # bounded_search_float(func,1,39,0,10)
+    logger = get_logger(f"logs/Search_SG_log_{args.model}_{args.attack_dist}_{args.train_th}_{time.time()}")
+    logger.info(f"{args}")
     evaluator = SGEval(args.train_th, args.attack_dist, args.train_epoch, args.attack_runs, args.eval_runs, args.model, args.device)
     # search.evaluate_dev_var(0.2, eval_runs=args.eval_runs)
-    searcher = BoundedSearch(args.max_search_iter)
+    searcher = BoundedSearch(args.max_search_iter, logger)
     res = searcher.bounded_search_float(evaluator.evaluate_dev_var, args.train_var_start, args.train_var_end)
     max_key = max(searcher.replay_memory, key=searcher.replay_memory.get)
     max_value = max(searcher.replay_memory.values())
-    print(f"best variation: {max_key}, best accuracy: {max_value:.4f}")
+    logger.info(f"best variation: {max_key}, best accuracy: {max_value:.4f}")

@@ -24,7 +24,7 @@ import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
 from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval
-from utils import copy_model
+from utils import copy_model, get_logger
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -92,7 +92,8 @@ if __name__ == "__main__":
             help='# of epochs to warm up')
     args = parser.parse_args()
 
-    print(args)
+    logger = get_logger(f"logs/train_three_log_{args.model}_{args.attack_dist}_{args.rate_max}_{time.time()}")
+    logger.info(f"{args}")
     header = time.time()
     header_timer = header
     parent_path = "./"
@@ -100,7 +101,7 @@ if __name__ == "__main__":
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     BS = 128
-    NW = 0
+    NW = 4
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
@@ -118,25 +119,25 @@ if __name__ == "__main__":
     
     kwargs = {"N":8, "m":1}
     t_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader
-    TPMTrain(t_model_group, args.warm_epoch, args.train_epoch, header, args.noise_type, 0, args.train_var, args.rate_max, args.rate_zero, args.write_var, args.train_attack_runs, args.attack_dist, verbose=args.verbose, **kwargs)
+    TPMTrain(t_model_group, args.warm_epoch, args.train_epoch, header, args.noise_type, 0.0, args.train_var, args.rate_max, args.rate_zero, args.write_var, args.train_attack_runs, args.attack_dist, logger=logger, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model_group = model, criteriaF, t_optimizer[0], t_scheduler[0], device, trainloader, testloader
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
     model.from_first_back_second()
-    torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
+    torch.save(model.state_dict(), f"saved_B_{header}_dist_{args.attack_dist}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
-    # print(f"No mask no noise: {', '.join([ f'{acc:.4f}' for acc in TCEval(t_model_group)])}")
-    print(f"No mask no noise: {CEval(model_group):.4f}")
+    # logger.info(f"No mask no noise: {', '.join([ f'{acc:.4f}' for acc in TCEval(t_model_group)])}")
+    logger.info(f"No mask no noise: {CEval(model_group):.4f}")
     model.from_first_back_second()
-    state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
+    state_dict = torch.load(f"saved_B_{header}_dist_{args.attack_dist}_noise_{args.rate_max}_{args.train_var}.pt")
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    performance = PGD_Eval(model_group, args.attack_runs, args.attack_dist, "act")
-    print(f"No mask PGD acc: {performance:.4f}")
+    performance, pgd_max, pgd_l2 = PGD_Eval(model_group, args.attack_runs, args.attack_dist, "act")
+    logger.info(f"No mask PGD acc: {performance:.4f}, max distance: {pgd_max}")
     # mean_attack, w = attack_wcw(model, testloader, verbose=True)
     exit()
 

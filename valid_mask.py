@@ -26,7 +26,7 @@ import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
 from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval
-from utils import copy_model
+from utils import copy_model, get_logger
 
 def GetSecond():
     model.eval()
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     BS = 128
-    NW = 0
+    NW = 2
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
     model = get_model(args)
@@ -174,6 +174,7 @@ if __name__ == "__main__":
     
     model, optimizer, w_optimizer, scheduler = prepare_model(model, device, args)
     model_group = model, criteriaF, optimizer, scheduler, device, trainloader, testloader
+    model.normalize()
 
     crr_acc = CEval(model_group)
     print(f"With mask no noise: {crr_acc:.4f}")
@@ -181,6 +182,7 @@ if __name__ == "__main__":
     print(f"With mask noise acc: {performance:.4f}")
     model.clear_noise()
     
+    start_time = time.time()
     steps = args.attack_runs
     step_size = args.attack_dist / steps
     attacker = PGD(model, args.attack_dist, step_size=step_size, steps=steps * 10)
@@ -190,7 +192,8 @@ if __name__ == "__main__":
     this_accuracy = CEval(model_group)
     this_max = attacker.noise_max().item()
     this_l2 = attacker.noise_l2().item()
-    print(f"PGD Results --> acc: {this_accuracy:.4f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
+    end_time = time.time()
+    print(f"PGD Results --> acc: {this_accuracy:.5f}, l2: {this_l2:.4f}, max: {this_max:.4f}, time: {end_time - start_time:.4f}")
     model.clear_noise()
     exit()
 

@@ -410,14 +410,14 @@ if __name__ == "__main__":
     criteria = SCrossEntropyLoss()
     criteriaF = torch.nn.CrossEntropyLoss()
 
-    optimizer = optim.SGD(model.parameters(), lr=1e-4)
+    optimizer = optim.SGD(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
     
     model.to_first_only()
     model.de_select_drop()
     kwargs = {"N":8, "m":1}
     starting_point = args.warm_epoch
-    MTrain(starting_point, header, args.noise_type, args.train_var/10, args.rate_max*3, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
+    MTrain(starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [60])
     MTrain(args.train_epoch - starting_point, header, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, verbose=args.verbose, **kwargs)
