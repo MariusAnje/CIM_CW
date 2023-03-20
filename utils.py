@@ -478,6 +478,37 @@ def MTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, clean acc: {noise_free_acc:.4f}, noise set: {set_noise}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
         scheduler.step()
 
+def HMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, 
+            eval_noise_type, eval_dev_var, eval_rate_max, eval_rate_zero, verbose=False, **kwargs):
+    
+    model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
+    best_acc = 0.0
+    for i in range(epochs):
+        start_time = time.time()
+        model.train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            model.clear_noise()
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            optimizer.zero_grad()
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        test_acc = MEachEval(model_group, eval_noise_type, eval_dev_var, eval_rate_max, eval_rate_zero, write_var, **kwargs)
+        model.clear_noise()
+        noise_free_acc = CEval(model_group)
+        if test_acc > best_acc:
+            best_acc = test_acc
+            torch.save(model.state_dict(), f"tmp_best_{header}.pt")
+        if verbose:
+            end_time = time.time()
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, clean acc: {noise_free_acc:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+        scheduler.step()
+
 def PMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
     best_acc = 0.0
@@ -556,6 +587,81 @@ def TPMTrain(three_model_group, warm_epochs, epochs, header, noise_type, dev_var
                     print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, pgd acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
                 else:
                     logger.info(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, pgd acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+            
+            if best_pgd_index == 0:
+                end = right
+            elif best_pgd_index == 1:
+                start = left
+                end = right
+            else:
+                start = left
+            for i in range(len(t_model)):
+                t_model[i].load_state_dict(t_model[best_pgd_index].state_dict())
+
+            # test_acc = CEval()
+            if pgd_acc[best_pgd_index] > best_acc:
+                best_acc = pgd_acc[best_pgd_index]
+                torch.save(t_model[best_pgd_index].state_dict(), f"tmp_best_{header}.pt")
+            
+            for i in range(len(t_scheduler)):
+                t_scheduler[i].step()
+        else:
+            if verbose:
+                end_time = time.time()
+                if logger is None:
+                    print(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+                else:
+                    logger.info(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+
+def TNMTrain(three_model_group, warm_epochs, epochs, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, attack_runs, attack_dist, logger=None, verbose=False, **kwargs):
+    t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
+    best_acc = 0.0
+    start, end = dev_var_start, dev_var_end
+    merged_flag = False
+
+    for ep in range(warm_epochs + epochs):
+        if end - start < 1e-4 and not merged_flag:
+            three_model_group = [t_model[1]], criteriaF, [t_optimizer[1]], [w_optimizer[1]], [t_scheduler[1]], device, trainloader, testloader
+            t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
+            merged_flag = True
+
+        mid = (start + end)/2
+        oForth = (end - start) / 4
+        left = start + oForth
+        right = end - oForth
+        dev_var_list = [left, mid, right]
+        start_time = time.time()
+        for i in range(len(t_model)):
+            t_model[i].train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            for i in range(len(t_model)):
+                t_model[i].clear_noise()
+                t_model[i].set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
+                t_optimizer[i].zero_grad()
+                images, labels = images.to(device), labels.to(device)
+                outputs = t_model[i](images)
+                loss = criteriaF(outputs,labels)
+                loss.backward()
+                if ep >= warm_epochs:
+                    t_optimizer[i].step()
+                else:
+                    w_optimizer[i].step()
+                running_loss += loss.item()
+        test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs)
+        best_pgd_index = min(len(t_model) - 1, 1)
+        if ep >= warm_epochs:
+            TUpdateBN(three_model_group)
+            pgd_acc = TMEachEval(three_model_group, "Gaussian", [attack_dist]*len(dev_var_list), rate_max, rate_zero, write_var, **kwargs)
+            best_pgd_index = np.argmax(pgd_acc)
+
+            if verbose:
+                end_time = time.time()
+                if logger is None:
+                    print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, noise acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+                else:
+                    logger.info(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, noise acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
             
             if best_pgd_index == 0:
                 end = right
