@@ -45,6 +45,7 @@ class Attack(object):
         self._model_training = False
         self._batchnorm_training = False
         self._dropout_training = False
+        self._softmax = nn.Softmax(dim=1)
         self.set_f(function="act")
 
     def forward(self, *input):
@@ -351,6 +352,14 @@ class Attack(object):
         else:
             return torch.clamp((j-i), min=-self.kappa)
     
+    def f_sm_act(self, outputs, labels):
+        outputs = self._softmax(outputs)
+        return self.f_act(outputs, labels)
+
+    def f_e_act(self, outputs, labels):
+        outputs = outputs.exp()
+        return self.f_act(outputs, labels)
+    
     def f_cross(self, outputs, labels):
         return -1e6 * nn.functional.cross_entropy(outputs, labels).sum()
     
@@ -359,6 +368,12 @@ class Attack(object):
             self.f = self.f_act
         elif function == "cross":
             self.f = self.f_cross
+        elif function == "sm_act":
+            self.f = self.f_sm_act
+        elif function == "e_act":
+            self.f = self.f_e_act
+        else:
+            raise NotImplementedError(f"{function}")
 
 
 class CW(Attack):

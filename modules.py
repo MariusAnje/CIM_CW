@@ -54,8 +54,12 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_uni(self, dev_var)
     elif noise_type == "SPU":
         set_SPU(self, rate_max, rate_zero, dev_var)
+    elif noise_type == "SU":
+        set_SU(self, rate_max, dev_var)
     elif noise_type == "SG":
         set_SG(self, rate_max, dev_var)
+    elif noise_type == "CSG":
+        set_CSG(self, rate_max, dev_var)
     elif noise_type == "BSG":
         set_BSG(self, rate_max, dev_var)
     elif noise_type == "BG":
@@ -97,6 +101,14 @@ def set_SPU(self, s_rate, p_rate, dev_var):
     self.noise[th_mat] = self.noise[th_mat].data.sign()
     self.noise = self.noise * scale * dev_var
 
+def set_SU(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    self.noise = (torch.rand_like(self.noise) - 0.5) * 2
+    rate_mat = torch.rand_like(self.noise)
+    th_mat = rate_mat > (1 - s_rate)
+    self.noise[th_mat] = self.noise[th_mat].data.sign()
+    self.noise = self.noise * scale * dev_var
+
 def set_powerlaw(self, dev_var, s_rate, p_rate=0.1 ):
     # here s_rate means alpha of lognormal distribution
     scale = self.op.weight.abs().max().item()
@@ -110,6 +122,13 @@ def set_SG(self, s_rate, dev_var):
     self.noise = torch.randn_like(self.noise)
     self.noise[self.noise > s_rate] = s_rate
     # self.noise[self.noise < -s_rate] = -s_rate
+    self.noise = self.noise * scale * dev_var
+
+def set_CSG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    self.noise = torch.randn_like(self.noise)
+    self.noise[self.noise > s_rate] = s_rate
+    self.noise[self.noise < -s_rate] = -s_rate
     self.noise = self.noise * scale * dev_var
 
 def set_BSG(self, s_rate, dev_var):

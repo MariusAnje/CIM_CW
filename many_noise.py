@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from utils import str2bool, attack_wcw, get_dataset, get_model, prepare_model
-from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval
+from utils import TPMTrain, MTrain, TCEval, TMEachEval, PGD_Eval, CEval, MEachEval, MEval, MBEval
 from utils import copy_model, get_logger
 
 def GetSecond():
@@ -84,6 +84,12 @@ if __name__ == "__main__":
             help='device variation [std] before write and verify')
     parser.add_argument('--write_var', action='store', type=float, default=0.03,
             help='device variation [std] after write and verify')
+    parser.add_argument('--rate_zero', action='store', type=float, default=0.03,
+            help='pepper rate, rate of noise being zero')
+    parser.add_argument('--rate_max', action='store', type=float, default=0.03,
+            help='salt rate, rate of noise being one')
+    parser.add_argument('--noise_type', action='store', default="Gaussian",
+            help='type of noise used')
     parser.add_argument('--mask_p', action='store', type=float, default=0.01,
             help='portion of the mask')
     parser.add_argument('--device', action='store', default="cuda:0",
@@ -118,14 +124,12 @@ if __name__ == "__main__":
             help='# of runs for attack')
     parser.add_argument('--attack_lr', action='store',type=float, default=1e-4,
             help='learning rate for attack')
-    parser.add_argument('--attack_function', action='store', default="act", choices=["act", "e_act", "sm_act", "cross"],
+    parser.add_argument('--attack_function', action='store', default="act", choices=["act", "cross"],
             help='function used for attack')
     parser.add_argument('--attack_distance_metric', action='store', default="l2", choices=["max", "l2", "linf", "loss"],
             help='distance metric used for attack')
     parser.add_argument('--attack_dist', action='store', type=float, default=0.03,
             help='distance used for attack')
-    parser.add_argument('--attack_expand', action='store', type=int, default=10,
-            help='number of attack runs expansion')
     parser.add_argument('--load_atk', action='store',type=str2bool, default=True,
             help='if we should load the attack')
     parser.add_argument('--load_direction', action='store',type=str2bool, default=False,
@@ -180,32 +184,21 @@ if __name__ == "__main__":
 
     crr_acc = CEval(model_group)
     print(f"With mask no noise: {crr_acc:.4f}")
-    performance = 0
-    print(f"With mask noise acc: {performance:.4f}")
-    model.clear_noise()
-    
-    start_time = time.time()
-    steps = args.attack_runs
-    step_size = args.attack_dist / steps
-    attacker = PGD(model, args.attack_dist, step_size=step_size, steps=steps * args.attack_expand)
-    attacker.set_f(args.attack_function)
-    attacker(testloader, args.use_tqdm)
-    # attacker.save_noise(f"lol_{header}_{args.attack_dist:.4f}.pt")
-    this_accuracy = CEval(model_group)
-    this_max = attacker.noise_max().item()
-    this_l2 = attacker.noise_l2().item()
-    end_time = time.time()
-    print(f"PGD Results --> acc: {this_accuracy:.5f}, l2: {this_l2:.4f}, max: {this_max:.4f}, time: {end_time - start_time:.4f}")
-    model.clear_noise()
-    exit()
 
-    acc, dist_max, dist_l2, c = binary_search_dist(search_runs = 100, acc_evaluator=CEval, dataloader=testloader, target_metric=args.attack_dist, attacker_class=WCW, model=model, init_c=args.attack_c, steps=args.attack_runs, lr=args.attack_lr, distance=args.attack_distance_metric, verbose=args.verbose, use_tqdm = args.use_tqdm, function = args.attack_function)
-    print(f"C&W Results --> C: {c:.4e}, acc: {acc:.4f}, l2: {dist_l2:.4f},  max: {dist_max:.4f}")
-    
-    # target max: 0.03, header = 2
-    # Model: QLeNet acc:0.5402, c = 1.9844e-09, lr = 1e-5
-    # Model: QCIFAR acc:0.0245, c = 1e-5, lr = 1e-4
-    # Model: QRes18 acc:0.0000, c = 10, dist = 0.0111, lr = 5e-5
-    # Model: QTIN   acc:0.0000, c = 1,  dist = 0.0059, lr = 1e-4
-    # Model: QVGGIN acc:0.0008, c = 1,  dist = 0.0273, lr = 1e-4
+    model.clear_mask()
+    model.to_first_only()
+    kwargs = {"N":8, "m":1}
+    performance_list = []
+    if args.use_tqdm:
+        iter_loader = tqdm(range(args.noise_epoch))
+    else:
+        iter_loader = range(args.noise_epoch)
+    for _ in iter_loader:
+        performance = MBEval(model_group, args.noise_type, args.dev_var, args.rate_max, args.rate_zero, args.write_var, args.acc_th, **kwargs)
+        performance_list += (performance)
+        if args.use_tqdm:
+            iter_loader.set_description(f"current: {np.min(performance):.4f}, mean: {np.mean(performance_list):.4f}, worst: {np.min(performance_list):.4f}")
+    print(f"No mask noise average acc: {np.mean(performance_list):.4f}")
+    print(f"No mask noise worst acc: {np.min(performance_list):.4f}")
+    torch.save(performance_list, f"NSave_{header}_{args.noise_type}_{args.dev_var}_{args.rate_max}_{args.rate_zero}_{time.time()}.pt")
     exit()

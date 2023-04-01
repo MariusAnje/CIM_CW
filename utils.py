@@ -4,6 +4,7 @@ from cw_attack import Attack, WCW, binary_search_c, binary_search_dist, PGD
 import numpy as np
 import torchvision
 import torchvision.transforms as transforms
+from torch import nn
 import modules
 from models import SCrossEntropyLoss, SMLP3, SMLP4, SLeNet, CIFAR, FakeSCrossEntropyLoss, SAdvNet
 from qmodels import QSLeNet, QCIFAR
@@ -315,6 +316,49 @@ def NEachEval(model_group, dev_var, write_var):
             total += len(correction)
     return (correct/total).cpu().item()
 
+def MEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
+    model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
+    model.eval()
+    total = 0
+    correct = 0
+    model.clear_noise()
+    with torch.no_grad():
+        model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+        for images, labels in testloader:
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            if len(outputs) == 2:
+                outputs = outputs[0]
+            predictions = outputs.argmax(dim=1)
+            correction = predictions == labels
+            correct += correction.sum()
+            total += len(correction)
+    return (correct/total).cpu().item()
+
+def MBEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, acc_th=0.5, **kwargs):
+    model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
+    model.eval()
+    total = 0
+    correct = 0
+    acc_list = []
+    with torch.no_grad():
+        for images, labels in testloader:
+            model.clear_noise()
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            if len(outputs) == 2:
+                outputs = outputs[0]
+            predictions = outputs.argmax(dim=1)
+            correction = predictions == labels
+            correct += correction.sum()
+            total += len(correction)
+            batch_acc = (correction.sum() / len(correction)).item()
+            if batch_acc < acc_th:
+                acc_list.append(CEval(model_group))
+            else:
+                acc_list.append(batch_acc)
+    return acc_list
 def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
     model.eval()
@@ -476,6 +520,40 @@ def MTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero
         if verbose:
             end_time = time.time()
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, clean acc: {noise_free_acc:.4f}, noise set: {set_noise}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+        scheduler.step()
+
+def DMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
+    model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
+    best_acc = 0.0
+    set_noise = True
+    for i in range(epochs):
+        start_time = time.time()
+        model.train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            model.clear_noise()
+            if set_noise:
+                model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            optimizer.zero_grad()
+            images, labels = images.to(device), labels.to(device)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        test_acc = MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+        model.clear_noise()
+        noise_free_acc = CEval(model_group)
+
+        if set_noise:
+            if test_acc > best_acc:
+                best_acc = test_acc
+                torch.save(model.state_dict(), f"tmp_best_{header}.pt")
+        if verbose:
+            end_time = time.time()
+            cross, act = criteriaF.summary()
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, clean acc: {noise_free_acc:.4f}, noise set: {set_noise}, loss: {cross:.4f}, sense: {act:.4f}, used time: {end_time - start_time:.4f}")
         scheduler.step()
 
 def HMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, 
@@ -721,3 +799,47 @@ def attack_wcw(model, val_data, verbose=False):
         print(f"L2 norm: {np.mean(avg_list):.4f}, max: {np.mean(max_list):.4f}, acc: {mean_attack:.4f}")
     w = attacker.get_noise()
     return mean_attack, w
+
+def f_act(targeted, outputs, labels, kappa=0, gamma=1e10):
+    one_hot_labels = torch.eye(len(outputs[0]))[labels.cpu()].to(outputs.device)
+
+    i, _ = torch.max((1-one_hot_labels)*outputs, dim=1) # get the second largest logit
+    j = outputs[one_hot_labels.bool().cpu()]
+
+    if targeted:
+        # return -torch.clamp((i-j), min=-kappa).sum()
+        return -torch.clamp((i-j), min=-kappa, max=gamma).sum()
+    else:
+        # return -torch.clamp((j-i), min=-kappa).sum()
+        return -torch.clamp((j-i), min=-kappa, max=gamma).sum()
+
+
+class LossCrossAct(nn.Module):
+    def __init__(self, alpha, targeted=False, kappa=0, gamma=1e10) -> None:
+        super().__init__()
+        self._alpha = alpha
+        self._targeted = targeted
+        self._kappa = kappa
+        self._gamma = gamma
+        self._cross = nn.CrossEntropyLoss()
+        self._act = f_act
+        self.record = {"cross":[], "act":[]}
+    
+    def forward(self, outputs, labels):
+        cr = self._cross(outputs, labels)
+        act = self._act(self._targeted, outputs, labels, self._kappa, self._gamma)
+        self.record["cross"].append(cr.item())
+        self.record["act"].append(act.item())
+        return cr - self._alpha * act
+
+    def get_average(self):
+        return np.mean(self.record["cross"]), np.mean(self.record["act"])
+    
+    def clear(self) -> None:
+        self.record["cross"] = []
+        self.record["act"] = []
+    
+    def summary(self):
+        cross, act = self.get_average()
+        self.clear()
+        return cross, act
