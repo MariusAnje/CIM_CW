@@ -110,7 +110,7 @@ if __name__ == "__main__":
             help='where you put the pretrained model')
     parser.add_argument('--first_path', action='store', default="./firsts",
             help='where you put the pre-calculated first derivatives')
-    parser.add_argument('--save_file', action='store',type=str2bool, default=True,
+    parser.add_argument('--save_file', action='store',type=str2bool, default=False,
             help='if to save the files')
     parser.add_argument('--calc_S', action='store',type=str2bool, default=True,
             help='if calculated S grad if not necessary')
@@ -213,7 +213,8 @@ if __name__ == "__main__":
             iter_loader.set_description(f"current: {performance:.4f}, mean: {np.mean(performance_list):.4f}, worst: {np.min(performance_list):.4f}")
     print(f"No mask noise average acc: {np.mean(performance_list):.4f}")
     print(f"No mask noise worst acc: {np.min(performance_list):.4f}")
-    torch.save(performance_list, f"Quantile_{args.model}_{header}_{args.noise_type}_{args.dev_var}_{args.rate_max}_{args.rate_zero}_{time.time()}.pt")
+    if args.save_file:
+        torch.save(performance_list, f"Quantile_{args.model}_{header}_{args.noise_type}_{args.dev_var}_{args.rate_max}_{args.rate_zero}_{time.time()}.pt")
     q_list = [0.5, 0.1, 0.01, 0.001, 0.0001]
     for quantile in q_list:
         print(f"{quantile:6f} quantile: {np.quantile(performance_list, quantile):.4f}")

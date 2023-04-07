@@ -359,6 +359,7 @@ def MBEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, acc
             else:
                 acc_list.append(batch_acc)
     return acc_list
+
 def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
     model.eval()
@@ -380,6 +381,29 @@ def MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, 
             correct += correction.sum()
             total += len(correction)
     return (correct/total).cpu().item()
+
+def TMEval(t_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs):
+    t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = t_model_group
+    acc_list = []
+    for i in range(len(t_model)):
+        model = t_model[i]
+        model.eval()
+        total = 0
+        correct = 0
+        model.clear_noise()
+        with torch.no_grad():
+            model.set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
+            for images, labels in testloader:
+                images, labels = images.to(device), labels.to(device)
+                outputs = model(images)
+                if len(outputs) == 2:
+                    outputs = outputs[0]
+                predictions = outputs.argmax(dim=1)
+                correction = predictions == labels
+                correct += correction.sum()
+                total += len(correction)
+            acc_list.append((correct/total).cpu().item())
+    return acc_list
 
 def TMEachEval(t_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs):
     t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = t_model_group
@@ -766,6 +790,87 @@ def TNMTrain(three_model_group, warm_epochs, epochs, header, noise_type, dev_var
                 else:
                     logger.info(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
 
+def TQMTrain(three_model_group, warm_epochs, epochs, noise_epochs, quantile, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, attack_runs, attack_dist, logger=None, verbose=False, **kwargs):
+    t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader, testloader_large = three_model_group
+    three_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader
+    three_model_group_large = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader_large
+    best_acc = 0.0
+    start, end = dev_var_start, dev_var_end
+    merged_flag = False
+
+    for ep in range(warm_epochs + epochs):
+        if end - start < 1e-4 and not merged_flag:
+            three_model_group = [t_model[1]], criteriaF, [t_optimizer[1]], [w_optimizer[1]], [t_scheduler[1]], device, trainloader, testloader
+            three_model_group_large = [t_model[1]], criteriaF, [t_optimizer[1]], [w_optimizer[1]], [t_scheduler[1]], device, trainloader, testloader_large
+            t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader = three_model_group
+            merged_flag = True
+
+        mid = (start + end)/2
+        oForth = (end - start) / 4
+        left = start + oForth
+        right = end - oForth
+        dev_var_list = [left, mid, right]
+        start_time = time.time()
+        for i in range(len(t_model)):
+            t_model[i].train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            for i in range(len(t_model)):
+                t_model[i].clear_noise()
+                t_model[i].set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
+                t_optimizer[i].zero_grad()
+                images, labels = images.to(device), labels.to(device)
+                outputs = t_model[i](images)
+                loss = criteriaF(outputs,labels)
+                loss.backward()
+                if ep >= warm_epochs:
+                    t_optimizer[i].step()
+                else:
+                    w_optimizer[i].step()
+                running_loss += loss.item()
+        test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs)
+        best_pgd_index = min(len(t_model) - 1, 1)
+        if ep >= warm_epochs:
+            TUpdateBN(three_model_group)
+            acc_list = []
+            for _ in range(noise_epochs):
+                tmp_acc = TMEval(three_model_group_large, "Gaussian", [attack_dist]*len(dev_var_list), rate_max, rate_zero, write_var, **kwargs)
+                acc_list.append(tmp_acc)
+            pgd_acc = np.quantile(np.array(acc_list), quantile, axis=0)
+            best_pgd_index = np.argmax(pgd_acc)
+
+            if verbose:
+                end_time = time.time()
+                if logger is None:
+                    print(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, noise acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+                else:
+                    logger.info(f"epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, noise acc: {pgd_acc[best_pgd_index]:.4f}, start: {start:.4f}, end: {end:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+            
+            if best_pgd_index == 0:
+                end = right
+            elif best_pgd_index == 1:
+                start = left
+                end = right
+            else:
+                start = left
+            for i in range(len(t_model)):
+                t_model[i].load_state_dict(t_model[best_pgd_index].state_dict())
+
+            # test_acc = CEval()
+            if pgd_acc[best_pgd_index] > best_acc:
+                best_acc = pgd_acc[best_pgd_index]
+                torch.save(t_model[best_pgd_index].state_dict(), f"tmp_best_{header}.pt")
+            
+            for i in range(len(t_scheduler)):
+                t_scheduler[i].step()
+        else:
+            if verbose:
+                end_time = time.time()
+                if logger is None:
+                    print(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+                else:
+                    logger.info(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
 
 def str2bool(a):
     if a == "True":

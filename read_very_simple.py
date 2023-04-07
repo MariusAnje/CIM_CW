@@ -16,7 +16,7 @@ for fn in file_list:
             data = f.read()
             data = data.splitlines()
         for line in data:
-            if (("PGD" in line or "C&W" in line or "noise worst acc: " in line) and "acc: " in line):
+            if (("PGD" in line or "C&W" in line or "noise worst acc: " in line or "quantile" in line) and "acc: " in line):
                 index = line.find("acc: ") + len("acc: ")
                 num_list.append(float(line[index:index+6]))
 print(f"Everything: {num_list}")
