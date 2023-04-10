@@ -154,9 +154,9 @@ if __name__ == "__main__":
     if "LeNet" in args.model:
         BS = 10240
     elif "CIFAR" in args.model:
-        BS = 128
+        BS = 5000
     elif "Res18" in args.model:
-        BS = 128
+        BS = 5000
     elif "TIN" in args.model:
         BS = 128
     else:

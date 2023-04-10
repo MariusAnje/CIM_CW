@@ -103,10 +103,20 @@ if __name__ == "__main__":
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     BS = 128
+    if "LeNet" in args.model:
+        LARGE_BS = 10240
+    elif "CIFAR" in args.model:
+        LARGE_BS = 5000
+    elif "Res18" in args.model:
+        LARGE_BS = 128
+    elif "TIN" in args.model:
+        BLARGE_BSS = 128
+    else:
+        LARGE_BS = 128
     NW = 4
 
     trainloader, secondloader, testloader = get_dataset(args, BS, NW)
-    _, _, testloader_large = get_dataset(args, BS*100, NW)
+    _, _, testloader_large = get_dataset(args, LARGE_BS, NW)
     memory_testloader = []
     for data, labels in testloader:
         data, labels = data, labels
