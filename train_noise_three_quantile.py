@@ -108,9 +108,9 @@ if __name__ == "__main__":
     elif "CIFAR" in args.model:
         LARGE_BS = 5000
     elif "Res18" in args.model:
-        LARGE_BS = 128
+        LARGE_BS = 1024
     elif "TIN" in args.model:
-        BLARGE_BSS = 128
+        LARGE_BS = 128
     else:
         LARGE_BS = 128
     NW = 4
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     t_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, memory_testloader, memory_testloader_large
     TQMTrain(t_model_group, args.warm_epoch, args.train_epoch, args.train_attack_runs, args.quantile, header, args.noise_type, 0.0, args.train_var, args.rate_max, args.rate_zero, args.write_var, args.train_attack_runs, args.attack_dist, logger=logger, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
-    model_group = model, criteriaF, t_optimizer[0], t_scheduler[0], device, trainloader, memory_testloader
+    model_group = model, criteriaF, t_optimizer[0], t_scheduler[0], device, trainloader, memory_testloader_large
     model.clear_noise()
     state_dict = torch.load(f"tmp_best_{header}.pt")
     model.load_state_dict(state_dict)
