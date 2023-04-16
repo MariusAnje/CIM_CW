@@ -75,13 +75,11 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
     elif noise_type == "SL":
         set_SL(self, dev_var, rate_max, rate_zero)
     elif noise_type == "Four":
-        set_four(self, dev_var, rate_max)
+        set_four(self, dev_var, rate_max, kwargs["N"], kwargs["m"])
     else:
         raise NotImplementedError(f"Noise type: {noise_type} is not supported")
 
-def set_four(self, dev_var, s_rate):
-    N = 2
-    m = 2
+def set_four(self, dev_var, s_rate, N, m):
     dev_var_list = [1., s_rate, s_rate, 1.]
     scale = self.op.weight.abs().max().item()
     mask = ((0.25 < (self.op.weight.abs() / scale)) * ((self.op.weight.abs() / scale) < 0.75)).float()
