@@ -74,8 +74,24 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_powerlaw(self, dev_var, rate_max)
     elif noise_type == "SL":
         set_SL(self, dev_var, rate_max, rate_zero)
+    elif noise_type == "Four":
+        set_four(self, dev_var, rate_max)
     else:
         raise NotImplementedError(f"Noise type: {noise_type} is not supported")
+
+def set_four(self, dev_var, s_rate):
+    N = 2
+    m = 2
+    dev_var_list = [1., s_rate, s_rate, 1.]
+    scale = self.op.weight.abs().max().item()
+    mask = ((0.25 < (self.op.weight.abs() / scale)) * ((self.op.weight.abs() / scale) < 0.75)).float()
+    new_sigma = 0
+    for i in range(1, N//m + 1):
+        new_sigma += pow(2, - i*m) ** 2
+    new_sigma = np.sqrt(new_sigma)
+    noise_dev = torch.randn_like(self.noise) * new_sigma * dev_var
+    noise_dev = noise_dev.to(self.op.weight.device) * scale
+    self.noise = noise_dev * mask * dev_var_list[1] + noise_dev * (1-mask) * dev_var_list[0]
 
 def set_pepper(self, dev_var, rate):
 
