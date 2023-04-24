@@ -46,6 +46,12 @@ if __name__ == "__main__":
             help='salt rate, rate of noise being one')
     parser.add_argument('--noise_type', action='store', default="Gaussian",
             help='type of noise used')
+    parser.add_argument('--test_zero', action='store', type=float, default=0,
+            help='for test, pepper rate, rate of noise being zero')
+    parser.add_argument('--test_max', action='store', type=float, default=1,
+            help='for test, salt rate, rate of noise being one')
+    parser.add_argument('--test_noise_type', action='store', default="Gaussian",
+            help='for test, type of noise used')
     parser.add_argument('--mask_p', action='store', type=float, default=0.01,
             help='portion of the mask')
     parser.add_argument('--device', action='store', default="cuda:0",
@@ -140,7 +146,9 @@ if __name__ == "__main__":
     
     kwargs = {"N":8, "m":1}
     t_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, memory_testloader, memory_testloader_large
-    TQMTrain(t_model_group, args.warm_epoch, args.train_epoch, args.train_attack_runs, args.quantile, header, args.noise_type, 0.0, args.train_var, args.rate_max, args.rate_zero, args.write_var, args.train_attack_runs, args.attack_dist, logger=logger, verbose=args.verbose, **kwargs)
+    TQMTrain(t_model_group, args.warm_epoch, args.train_epoch, args.train_attack_runs, args.quantile, header, 
+             args.noise_type, 0.0, args.train_var, args.rate_max, args.rate_zero, args.write_var, 
+             args.train_attack_runs, args.test_noise_type, args.test_max, args.test_zero, args.attack_dist, logger=logger, verbose=args.verbose, **kwargs)
     # ATrain(args.train_epoch, header, dev_var=args.train_var, verbose=args.verbose)
     model_group = model, criteriaF, t_optimizer[0], t_scheduler[0], device, trainloader, memory_testloader_large
     model.clear_noise()
@@ -157,11 +165,11 @@ if __name__ == "__main__":
     model.load_state_dict(state_dict)
     model.clear_mask()
     model.to_first_only()
-    average_performance = MEachEval(model_group, "Gaussian", args.attack_dist, 1, 0, 0, **kwargs)
+    average_performance = MEachEval(model_group, args.test_noise_type, args.attack_dist, args.test_max, args.test_zero, 0, **kwargs)
     logger.info(f"No mask noise average acc: {average_performance:.4f}")
     performance_list = []
     for _ in range(args.attack_runs):
-        performance = MEval(model_group, "Gaussian", args.attack_dist, 1, 0, 0, **kwargs)
+        performance = MEval(model_group, args.test_noise_type, args.attack_dist, args.test_max, args.test_zero, 0, **kwargs)
         performance_list.append(performance)
     performance = np.quantile(performance_list, args.quantile)
     logger.info(f"No mask noise acc: {performance:.4f}, distance: {args.attack_dist}, quantile: {args.quantile}")

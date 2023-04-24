@@ -790,7 +790,9 @@ def TNMTrain(three_model_group, warm_epochs, epochs, header, noise_type, dev_var
                 else:
                     logger.info(f"warm up epoch: {ep:-3d}, test acc: {test_acc[best_pgd_index]:.4f}, mid: {mid:.4f}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
 
-def TQMTrain(three_model_group, warm_epochs, epochs, noise_epochs, quantile, header, noise_type, dev_var_start, dev_var_end, rate_max, rate_zero, write_var, attack_runs, attack_dist, logger=None, verbose=False, **kwargs):
+def TQMTrain(three_model_group, warm_epochs, epochs, noise_epochs, quantile, header, 
+             noise_type, dev_var_start, dev_var_end, train_max, train_zero, write_var, 
+             attack_runs, test_noise_type, test_max, test_zero, attack_dist, logger=None, verbose=False, **kwargs):
     t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader, testloader_large = three_model_group
     three_model_group = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader
     three_model_group_large = t_model, criteriaF, t_optimizer, w_optimizer, t_scheduler, device, trainloader, testloader_large
@@ -818,7 +820,7 @@ def TQMTrain(three_model_group, warm_epochs, epochs, noise_epochs, quantile, hea
         for images, labels in trainloader:
             for i in range(len(t_model)):
                 t_model[i].clear_noise()
-                t_model[i].set_noise_multiple(noise_type, dev_var_list[i], rate_max, rate_zero, write_var, **kwargs)
+                t_model[i].set_noise_multiple(noise_type, dev_var_list[i], train_max, train_zero, write_var, **kwargs)
                 t_optimizer[i].zero_grad()
                 images, labels = images.to(device), labels.to(device)
                 outputs = t_model[i](images)
@@ -829,13 +831,13 @@ def TQMTrain(three_model_group, warm_epochs, epochs, noise_epochs, quantile, hea
                 else:
                     w_optimizer[i].step()
                 running_loss += loss.item()
-        test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, rate_max, rate_zero, write_var, **kwargs)
+        test_acc = TMEachEval(three_model_group, noise_type, dev_var_list, test_max, train_max, train_zero, **kwargs)
         best_pgd_index = min(len(t_model) - 1, 1)
         if ep >= warm_epochs:
             TUpdateBN(three_model_group)
             acc_list = []
             for _ in range(noise_epochs):
-                tmp_acc = TMEval(three_model_group_large, "Gaussian", [attack_dist]*len(dev_var_list), rate_max, rate_zero, write_var, **kwargs)
+                tmp_acc = TMEval(three_model_group_large, test_noise_type, [attack_dist]*len(dev_var_list), test_max, test_zero, write_var, **kwargs)
                 acc_list.append(tmp_acc)
             pgd_acc = np.quantile(np.array(acc_list), quantile, axis=0)
             best_pgd_index = np.argmax(pgd_acc)
