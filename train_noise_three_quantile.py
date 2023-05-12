@@ -115,6 +115,8 @@ if __name__ == "__main__":
         LARGE_BS = 5000
     elif "Res18" in args.model:
         LARGE_BS = 1024
+    elif "ResC100" in args.model:
+        LARGE_BS = 1024
     elif "TIN" in args.model:
         LARGE_BS = 128
     else:

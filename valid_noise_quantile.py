@@ -157,6 +157,8 @@ if __name__ == "__main__":
         BS = 5000
     elif "Res18" in args.model:
         BS = 5000
+    elif "ResC100" in args.model:
+        BS = 1024
     elif "TIN" in args.model:
         BS = 128
     else:
