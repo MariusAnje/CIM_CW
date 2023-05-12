@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 from torch import nn
 import modules
 from models import SCrossEntropyLoss, SMLP3, SMLP4, SLeNet, CIFAR, FakeSCrossEntropyLoss, SAdvNet
-from qmodels import QSLeNet, QCIFAR
+from qmodels import QSLeNet, QCIFAR, QCIFAR100
 import resnet
 import qresnet
 import qvgg
@@ -33,6 +33,23 @@ def get_dataset(args, BS, NW):
         trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=4)
         secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=4)
         testset = torchvision.datasets.CIFAR10(root='~/Private/data', train=False, download=False, transform=transform)
+        testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=4)
+    elif args.model == "QCIFAR100" or args.model == "QResC100":
+        normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
+        transform = transforms.Compose(
+        [transforms.ToTensor(),
+        #  transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+            normalize])
+        train_transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(32, 4),
+                transforms.ToTensor(),
+                normalize,
+                ])
+        trainset = torchvision.datasets.CIFAR100(root='~/Private/data', train=True, download=False, transform=train_transform)
+        trainloader = torch.utils.data.DataLoader(trainset, batch_size=BS, shuffle=True, num_workers=4)
+        secondloader = torch.utils.data.DataLoader(trainset, batch_size=BS//args.div, shuffle=False, num_workers=4)
+        testset = torchvision.datasets.CIFAR100(root='~/Private/data', train=False, download=False, transform=transform)
         testloader = torch.utils.data.DataLoader(testset, batch_size=BS, shuffle=False, num_workers=4)
     elif args.model == "TIN" or args.model == "QTIN" or args.model == "QVGG":
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
@@ -110,8 +127,12 @@ def get_model(args):
         model = QSLeNet()
     elif args.model == "QCIFAR":
         model = QCIFAR()
+    elif args.model == "QCIFAR100":
+        model = QCIFAR100()
     elif args.model == "QRes18":
         model = qresnet.resnet18(num_classes = 10)
+    elif args.model == "QResC100":
+        model = qresnet.resnet18(num_classes = 100)
     elif args.model == "QDENSE":
         model = qdensnet.densenet121(num_classes = 10)
     elif args.model == "QTIN":

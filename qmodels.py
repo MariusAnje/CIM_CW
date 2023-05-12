@@ -173,6 +173,68 @@ class QCIFAR(QSModel):
             num_features *= s
         return num_features
 
+class QCIFAR100(QSModel):
+    def __init__(self, N=6):
+        super().__init__()
+
+        self.conv1 = QSConv2d(N, 3, 64, 3, padding=1)
+        self.conv2 = QSConv2d(N, 64, 64, 3, padding=1)
+        self.pool1 = SMaxpool2D(2,2)
+
+        self.conv3 = QSConv2d(N, 64,128,3, padding=1)
+        self.conv4 = QSConv2d(N, 128,128,3, padding=1)
+        self.pool2 = SMaxpool2D(2,2)
+
+        self.conv5 = QSConv2d(N, 128,256,3, padding=1)
+        self.conv6 = QSConv2d(N, 256,256,3, padding=1)
+        self.pool3 = SMaxpool2D(2,2)
+        
+        self.drop_feature = SFixedDropout(torch.Size([256 * 4 * 4]))
+        self.fc1 = QSLinear(N, 256 * 4 * 4, 1024)
+        self.fc2 = QSLinear(N, 1024, 1024)
+        self.fc3 = QSLinear(N, 1024, 100)
+        self.relu = SReLU()
+
+    def forward(self, x):
+        xS = torch.zeros_like(x)
+        if not self.first_only:
+            x = (x, xS)
+        x = self.conv1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.relu(x)
+        x = self.pool1(x)
+
+        x = self.conv3(x)
+        x = self.relu(x)
+        x = self.conv4(x)
+        x = self.relu(x)
+        x = self.pool2(x)
+
+        x = self.conv5(x)
+        x = self.relu(x)
+        x = self.conv6(x)
+        x = self.relu(x)
+        x = self.pool3(x)
+        
+        x = self.unpack_flattern(x)
+ 
+        self.xx = x
+        x = self.drop_feature(x)
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        return x
+
+    def num_flat_features(self, x):
+        size = x.size()[1:]  # all dimensions except the batch dimension
+        num_features = 1
+        for s in size:
+            num_features *= s
+        return num_features
+
 class QSNNet(QSModel):
 
     def __init__(self, N=4):
