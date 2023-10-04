@@ -134,17 +134,9 @@ if __name__ == "__main__":
     model.to_first_only()
     performance = MEachEval(model_group, args.noise_type, args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
     print(f"No mask noise acc: {performance:.4f}")
-
-    steps = args.attack_runs
-    step_size = args.attack_dist / steps
-    attacker = PGD(model, args.attack_dist, step_size=step_size, steps=steps * 10)
-    attacker.set_f("act")
-    attacker(testloader, args.use_tqdm)
-    # attacker.save_noise(f"lol_{header}_{args.attack_dist:.4f}.pt")
-    this_accuracy = CEval(model_group)
-    this_max = attacker.noise_max().item()
-    this_l2 = attacker.noise_l2().item()
-    end_time = time.time()
+    
+    model.clear_noise()
+    this_accuracy, this_max, this_l2 = PGD_Eval(model_group, args.attack_runs, args.attack_dist, "act", use_tqdm = False)
     print(f"PGD Results --> acc: {this_accuracy:.5f}, l2: {this_l2:.4f}, max: {this_max:.4f}")
     model.clear_noise()
     exit()
