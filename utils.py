@@ -528,6 +528,53 @@ def NTrain(model_group, epochs, header, dev_var=0.0, write_var=0.0, verbose=Fals
             print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, loss: {running_loss / len(trainloader):.4f}")
         scheduler.step()
 
+def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, alpha, step_size, verbose=False, **kwargs):
+    model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
+    best_acc = 0.0
+    set_noise = True
+    for i in range(epochs):
+        start_time = time.time()
+        model.train()
+        running_loss = 0.
+        # for images, labels in tqdm(trainloader):
+        for images, labels in trainloader:
+            optimizer.zero_grad()
+            images, labels = images.to(device), labels.to(device)
+            model.clear_noise()
+            attacker = PGD(model, 10, step_size=step_size, steps=1)
+            attacker.set_f("act")
+            attacker([(images, labels)], False)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels) * alpha
+            loss.backward()
+            model.clear_noise()
+            if set_noise:
+                model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item()
+        test_acc = MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+        model.clear_noise()
+        noise_free_acc = CEval(model_group)
+        # if noise_free_acc - test_acc < -0.02:
+        #     set_noise = False
+        # else:
+        #     set_noise = True
+        # if noise_free_acc - test_acc < -0.02:
+        #     UpdateBN(model_group)
+        #     noise_free_acc = CEval(model_group)
+        if set_noise:
+            if test_acc > best_acc:
+                best_acc = test_acc
+                torch.save(model.state_dict(), f"tmp_best_{header}.pt")
+        if verbose:
+            end_time = time.time()
+            print(f"epoch: {i:-3d}, test acc: {test_acc:.4f}, clean acc: {noise_free_acc:.4f}, noise set: {set_noise}, loss: {running_loss / len(trainloader):.4f}, used time: {end_time - start_time:.4f}")
+        scheduler.step()
+
+
 def MTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zero, write_var, verbose=False, **kwargs):
     model, criteriaF, optimizer, scheduler, device, trainloader, testloader = model_group
     best_acc = 0.0
