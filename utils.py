@@ -12,12 +12,13 @@ import resnet
 import qresnet
 import qvgg
 import qdensnet
+import qLresnet
 import qresnetIN
 from torch import optim
 import logging
 
 def get_dataset(args, BS, NW):
-    if args.model == "CIFAR" or args.model == "Res18" or args.model == "QCIFAR" or args.model == "QRes18" or args.model == "QDENSE":
+    if args.model == "CIFAR" or args.model == "Res18" or args.model == "QCIFAR" or args.model == "QRes18" or args.model == "QDENSE" or args.model == "QLRes18":
         normalize = transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))
         transform = transforms.Compose(
         [transforms.ToTensor(),
@@ -131,6 +132,8 @@ def get_model(args):
         model = QCIFAR100()
     elif args.model == "QRes18":
         model = qresnet.resnet18(num_classes = 10)
+    elif args.model == "QLRes18":
+        model = qLresnet.resnet18(num_classes = 10)
     elif args.model == "QResC100":
         model = qresnet.resnet18(num_classes = 100)
     elif args.model == "QDENSE":
