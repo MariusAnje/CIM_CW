@@ -543,19 +543,19 @@ def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
         for images, labels in trainloader:
             optimizer.zero_grad()
             images, labels = images.to(device), labels.to(device)
-            model.clear_noise()
+            if set_noise:
+                model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
+            model.eval()
             attacker = PGD(model, 10, step_size=step_size, steps=1)
             attacker.set_f("act")
             attacker([(images, labels)], False)
             outputs = model(images)
             loss = criteriaF(outputs,labels) * alpha
             loss.backward()
-            model.clear_noise()
-            if set_noise:
-                model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-            outputs = model(images)
-            loss = criteriaF(outputs,labels)
-            loss.backward()
+            model.train()
             optimizer.step()
             running_loss += loss.item()
         test_acc = MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
