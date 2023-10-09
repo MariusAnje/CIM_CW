@@ -122,10 +122,14 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     model.clear_noise()
     model.to_first_only()
-    for _ in range(3):
-        UpdateBN(model_group)
+#     for _ in range(3):
+#         UpdateBN(model_group)
+    model.set_noise_multiple("BLG", args.train_var, args.rate_max, args.rate_zero, args.write_var, **kwargs)
+    for m in model.modules():
+        if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+            m.op.weight.data += m.noise.data
+    model.clear_noise()
     print(f"No mask no noise: {CEval(model_group):.4f}")
-    model.from_first_back_second()
     model.from_first_back_second()
     torch.save(model.state_dict(), f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")
     state_dict = torch.load(f"saved_B_{header}_noise_{args.rate_max}_{args.train_var}.pt")

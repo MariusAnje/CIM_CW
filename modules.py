@@ -58,6 +58,8 @@ def set_noise_multiple(self, noise_type, dev_var, rate_max=0, rate_zero=0, write
         set_SU(self, rate_max, dev_var)
     elif noise_type == "SG":
         set_SG(self, rate_max, dev_var)
+    elif noise_type == "BLG":
+        set_BLG(self, rate_max, dev_var)
     elif noise_type == "LSG":
         set_LSG(self, rate_max, dev_var)
     elif noise_type == "FSG":
@@ -144,6 +146,13 @@ def set_SG(self, s_rate, dev_var):
     self.noise[self.noise > s_rate] = s_rate
     # self.noise[self.noise < -s_rate] = -s_rate
     self.noise = self.noise * scale * dev_var
+
+def set_BLG(self, s_rate, dev_var):
+    scale = self.op.weight.abs().max().item()
+    cdf = stats.norm.cdf(s_rate)
+    bias = (1 - cdf) * s_rate - 1 / np.sqrt(2 * np.pi) * np.exp(0-(s_rate**2 / 2))
+    self.noise = torch.zeros_like(self.noise)
+    self.noise += bias * scale * dev_var
 
 def set_LSG(self, s_rate, dev_var):
     scale = self.op.weight.abs().max().item()

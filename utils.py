@@ -545,8 +545,9 @@ def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
         for images, labels in trainloader:
             optimizer.zero_grad()
             images, labels = images.to(device), labels.to(device)
-            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            model.set_noise_multiple("BLG", dev_var, rate_max, rate_zero, write_var, **kwargs)
             model.eval()
+            model.normalize()
             outputs = model(images)
             cost = attacker.f(outputs, labels).sum()
             cost.backward()
@@ -558,6 +559,7 @@ def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
             loss = criteriaF(outputs,labels) * alpha
             loss.backward()
             optimizer.step()
+            model.de_normalize()
             optimizer.zero_grad()
             model.train()
             model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
@@ -568,6 +570,7 @@ def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
             running_loss += loss.item()
         test_acc = MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
         model.clear_noise()
+        model.set_noise_multiple("BLG", dev_var, rate_max, rate_zero, write_var, **kwargs)
         noise_free_acc = CEval(model_group)
         if set_noise:
             if test_acc > best_acc:
