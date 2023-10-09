@@ -539,35 +539,36 @@ def AMTrain(model_group, epochs, header, noise_type, dev_var, rate_max, rate_zer
         start_time = time.time()
         model.train()
         running_loss = 0.
+        attacker = PGD(model, 10, step_size=step_size, steps=1) 
+        attacker.set_f("act")
         # for images, labels in tqdm(trainloader):
         for images, labels in trainloader:
             optimizer.zero_grad()
             images, labels = images.to(device), labels.to(device)
-            if set_noise:
-                model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
-            outputs = model(images)
-            loss = criteriaF(outputs,labels)
-            loss.backward()
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
             model.eval()
-            attacker = PGD(model, 10, step_size=step_size, steps=1)
-            attacker.set_f("act")
-            attacker([(images, labels)], False)
+            outputs = model(images)
+            cost = attacker.f(outputs, labels).sum()
+            cost.backward()
+            for m in model.modules():
+                if isinstance(m, modules.NModule) or isinstance(m, modules.SModule):
+                    m.noise.data -= m.op.weight.grad.data.sign() * attacker.lr
+            optimizer.zero_grad()
             outputs = model(images)
             loss = criteriaF(outputs,labels) * alpha
             loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
             model.train()
+            model.set_noise_multiple(noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
+            outputs = model(images)
+            loss = criteriaF(outputs,labels)
+            loss.backward()
             optimizer.step()
             running_loss += loss.item()
         test_acc = MEachEval(model_group, noise_type, dev_var, rate_max, rate_zero, write_var, **kwargs)
         model.clear_noise()
         noise_free_acc = CEval(model_group)
-        # if noise_free_acc - test_acc < -0.02:
-        #     set_noise = False
-        # else:
-        #     set_noise = True
-        # if noise_free_acc - test_acc < -0.02:
-        #     UpdateBN(model_group)
-        #     noise_free_acc = CEval(model_group)
         if set_noise:
             if test_acc > best_acc:
                 best_acc = test_acc
